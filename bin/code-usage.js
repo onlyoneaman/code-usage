@@ -21,6 +21,7 @@ const appMeta = {
   authorUrl: APP_CONFIG.authorUrl,
   repoUrl: APP_CONFIG.repoUrl,
   packageUrl: APP_CONFIG.packageUrl || `https://www.npmjs.com/package/${encodeURIComponent(pkg.name || 'code-usage')}`,
+  assetBase: join(__dirname, '..', 'templates', 'assets'),
 };
 
 const hasClaude = existsSync(join(home, '.claude', 'stats-cache.json'));

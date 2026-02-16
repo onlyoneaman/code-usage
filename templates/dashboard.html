@@ -7,7 +7,8 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #f8fafc; color: #334155; line-height: 1.6; }
-  .header { padding: 24px 32px 0; border-bottom: 1px solid #e2e8f0; }
+  .header { border-bottom: 1px solid #e2e8f0; }
+  .header-inner { max-width: 1100px; margin: 0 auto; padding: 24px 24px 0; }
   .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
   .header h1 { font-size: 24px; font-weight: 700; color: #0f172a; }
   .header .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
@@ -15,15 +16,18 @@
   .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
   .header-controls { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
   .tab-bar { display: flex; gap: 4px; margin: 0; background: #e2e8f0; border-radius: 10px 10px 0 0; padding: 4px 4px 0; width: fit-content; }
-  .tab-btn { padding: 8px 20px 10px; border-radius: 8px 8px 0 0; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; }
+  .tab-btn { padding: 8px 20px 10px; border-radius: 8px 8px 0 0; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 7px; }
+  .tab-icon { width: 15px; height: 15px; object-fit: contain; flex: 0 0 auto; }
   .tab-btn:hover { color: #334155; }
   .tab-btn.active[data-tab="all"] { background: #f8fafc; color: #3b82f6; box-shadow: none; border-bottom: 2px solid #3b82f6; }
   .tab-btn.active[data-tab="claude"] { background: #f8fafc; color: #D37356; box-shadow: none; border-bottom: 2px solid #D37356; }
   .tab-btn.active[data-tab="codex"] { background: #f8fafc; color: #7385FE; box-shadow: none; border-bottom: 2px solid #7385FE; }
-  .range-bar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 6px; }
-  .range-btn { padding: 6px 10px; border-radius: 999px; border: 1px solid #cbd5e1; background: #fff; font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; }
-  .range-btn:hover { color: #334155; border-color: #94a3b8; }
-  .range-btn.active { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
+  .range-control { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .range-label { font-size: 12px; color: #64748b; font-weight: 600; white-space: nowrap; }
+  .range-select { border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 12px; color: #0f172a; font-weight: 600; }
+  .daily-view-toggle { display: inline-flex; gap: 4px; background: #e2e8f0; border-radius: 8px; padding: 3px; }
+  .daily-view-btn { border: none; background: transparent; color: #64748b; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  .daily-view-btn.active { background: #fff; color: #0f172a; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
@@ -52,7 +56,7 @@
   .bar { width: 100%; min-width: 12px; max-width: 28px; border-radius: 3px 3px 0 0; transition: background 0.2s; cursor: pointer; position: relative; }
   .bar:hover { filter: brightness(0.9); }
   .bar-label { font-size: 9px; color: #94a3b8; margin-top: 6px; writing-mode: vertical-lr; text-orientation: mixed; transform: rotate(180deg); max-height: 50px; overflow: hidden; }
-  .tooltip { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: #1e293b; color: #f1f5f9; padding: 6px 10px; border-radius: 6px; font-size: 11px; white-space: pre-line; z-index: 9999; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .tooltip { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: #1e293b; color: #f1f5f9; padding: 8px 12px; border-radius: 6px; font-size: 11px; white-space: pre-line; min-width: 170px; max-width: 280px; line-height: 1.35; text-align: left; z-index: 9999; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
   .chart-legend { display: flex; gap: 14px; margin-bottom: 8px; justify-content: flex-end; font-size: 11px; color: #64748b; }
   .chart-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
   .bar:hover .tooltip { display: block; }
@@ -91,10 +95,11 @@
   .sub-badge.claude { background: #f9e8e3; color: #a8533a; }
   .sub-badge.codex { background: #e3e8fe; color: #4a5fc7; }
   @media (max-width: 768px) {
+    .header-inner { padding: 16px 16px 0; }
     .header-controls { flex-direction: column; align-items: stretch; }
     .tab-bar { width: 100%; justify-content: space-between; }
-    .tab-btn { flex: 1; text-align: center; padding: 8px 8px 10px; }
-    .range-bar { justify-content: flex-start; }
+    .tab-btn { flex: 1; text-align: center; padding: 8px 8px 10px; justify-content: center; }
+    .range-control { justify-content: flex-start; margin-bottom: 10px; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .container { padding: 16px; }
   }
@@ -102,16 +107,21 @@
 </head>
 <body>
 <div class="header">
-  <div class="header-top">
-    <div>
-      <h1>Code Usage Dashboard</h1>
-      <div class="sub">Estimated API-equivalent costs from local session data</div>
+  <div class="header-inner">
+    <div class="header-top">
+      <div>
+        <h1>Code Usage Dashboard</h1>
+        <div class="sub">Estimated API-equivalent costs from local session data</div>
+      </div>
+      <div class="gen-time" id="gen-time"></div>
     </div>
-    <div class="gen-time" id="gen-time"></div>
-  </div>
-  <div class="header-controls">
-    <div class="tab-bar" id="tab-bar"></div>
-    <div class="range-bar" id="range-bar"></div>
+    <div class="header-controls">
+      <div class="tab-bar" id="tab-bar"></div>
+      <div class="range-control">
+        <label class="range-label" for="range-select">Range</label>
+        <select class="range-select" id="range-select"></select>
+      </div>
+    </div>
   </div>
 </div>
 <div class="container">
@@ -131,6 +141,43 @@ function fmt(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).t
 function fmtUSD(n){return '$'+n.toFixed(2);}
 function pad2(n){return n<10?'0'+n:String(n);}
 function localDateStr(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
+function fullDateStr(ds){
+  var m=String(ds||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?(m[2]+'-'+m[3]+'-'+m[1]):String(ds||'');
+}
+function fullDateFromIso(iso){
+  if(!iso)return '-';
+  var d=new Date(iso);
+  if(Number.isNaN(d.getTime()))return String(iso);
+  return pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+'-'+d.getFullYear();
+}
+function modelUsageKey(id){return String(id||'').replace(/-\d{8}$/,'');}
+function toFileUrl(pathLike){
+  var p=String(pathLike||'').replace(/\\/g,'/');
+  if(!p)return '';
+  if(p.indexOf('file://')===0||p.indexOf('http://')===0||p.indexOf('https://')===0)return p;
+  if(p.charAt(0)==='/')return 'file://'+p;
+  return 'file:///'+p;
+}
+function providerFromModel(id){return String(id||'').startsWith('gpt-')?'codex':'claude';}
+function colorForModel(id){
+  var mid=String(id||'').toLowerCase();
+  if(mid.startsWith('gpt-'))return CODEX_COLOR;
+  if(mid.indexOf('haiku')!==-1)return '#047857';
+  if(mid.indexOf('sonnet')!==-1)return '#c47a5f';
+  return CLAUDE_COLOR;
+}
+function rowAgentCosts(row){
+  var claude=0,codex=0;
+  var mc=row&&row.modelCosts?row.modelCosts:null;
+  if(mc){
+    for(var mid in mc){
+      if(providerFromModel(mid)==='codex')codex+=(mc[mid]||0);
+      else claude+=(mc[mid]||0);
+    }
+  }
+  return{claude:claude,codex:codex};
+}
 var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function el(tag,attrs,children){
@@ -230,12 +277,14 @@ function buildOpts(data){
   if(data.badge){var b=el('span',{class:'sub-badge '+(data.provider==='claude'?'claude':'codex')});b.textContent=data.badge;badgeEls.push(el('span',{class:'date-info'},[b]));}
 
   var rawModels=data.models.map(function(m){return{id:m.id,cost:m.cost,provider:data.provider};});
+  var modelUsage=rawModels.slice().sort(function(a,b){return b.cost-a.cost;});
 
   return{
     accent:accent,displayCost:s.totalCost,daysActive:daysActive,totalSessions:s.totalSessions,
     costPerDay:costPerDay,costPerSession:costPerSession,streak:s.streak,
     userMessages:s.totalMessages,outputTokens:s.totalOutputTokens,firstDate:s.firstDate,
     allDays:allDays,maxMsg:maxMsg,costCards:costCards,rawModels:rawModels,
+    modelUsage:modelUsage,showProviderBadge:false,
     weeklySorted:weeklySorted,weeklyMap:weeklyMap,
     dailyRows:dailyRows,extraCards:extraCards,badgeEls:badgeEls,pricingNote:data.pricingNote
   };
@@ -279,9 +328,33 @@ function mergeOpts(a,b){
   var weeklySorted=Object.keys(weeklyMap).sort();
 
   // Merge daily rows
-  var drMap={};function addDR(rows){rows.forEach(function(r){if(!drMap[r.date])drMap[r.date]={date:r.date,cost:0,sessions:0,messages:0,models:[]};drMap[r.date].cost+=r.cost;drMap[r.date].sessions+=r.sessions;drMap[r.date].messages+=r.messages;if(r.models)(r.models).forEach(function(m){if(drMap[r.date].models.indexOf(m)===-1)drMap[r.date].models.push(m);});});}
+  var drMap={};
+  function addDR(rows){
+    rows.forEach(function(r){
+      if(!drMap[r.date])drMap[r.date]={date:r.date,cost:0,sessions:0,messages:0,models:[],modelCosts:{}};
+      drMap[r.date].cost+=r.cost;
+      drMap[r.date].sessions+=r.sessions;
+      drMap[r.date].messages+=r.messages;
+      if(r.modelCosts){
+        for(var mk in r.modelCosts){
+          drMap[r.date].modelCosts[mk]=(drMap[r.date].modelCosts[mk]||0)+(r.modelCosts[mk]||0);
+        }
+      }
+      if(r.models)(r.models).forEach(function(m){if(drMap[r.date].models.indexOf(m)===-1)drMap[r.date].models.push(m);});
+    });
+  }
   addDR(a.dailyRows);addDR(b.dailyRows);
-  var dailyRows=Object.keys(drMap).sort().reverse().map(function(d){return drMap[d];});
+  var dailyRows=Object.keys(drMap).sort().reverse().map(function(d){
+    var row=drMap[d];
+    if(row.modelCosts){
+      row.models=Object.keys(row.modelCosts).sort(function(x,y){
+        var cx=row.modelCosts[x]||0,cy=row.modelCosts[y]||0;
+        if(cx!==cy)return cy-cx;
+        return x.localeCompare(y);
+      });
+    }
+    return row;
+  });
 
   // Badges with counts
   var badgeEls=[];
@@ -299,15 +372,17 @@ function mergeOpts(a,b){
     streak:streak,userMessages:userMsgs,outputTokens:outTok,firstDate:firstDate,
     allDays:allDays,maxMsg:maxMsg,stacked:true,
     modelUsage:allModels,costCards:null,
+    showProviderBadge:true,
     weeklySorted:weeklySorted,weeklyMap:weeklyMap,dailyRows:dailyRows,
     extraCards:[],badgeEls:badgeEls,
-    pricingNote:'Combined view. See individual Claude and Codex tabs for detailed pricing breakdowns.'
+    pricingNote:'Combined view across Claude and Codex. Models are sorted by estimated cost usage.'
   };
 }
 
 function adjustAccent(o){var r=Object.assign({},o);r.accent='#3b82f6';return r;}
 
 var RANGE_OPTIONS=[
+  {id:'this_week',label:'This Week'},
   {id:'this_month',label:'This Month'},
   {id:'this_year',label:'This Year'},
   {id:'last_30_days',label:'Last 30 Days'},
@@ -317,6 +392,12 @@ var RANGE_OPTIONS=[
 
 function rangeStart(rangeId){
   var now=new Date(),start=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  if(rangeId==='this_week'){
+    var day=start.getDay();
+    var diff=day===0?6:day-1; // Monday start
+    start.setDate(start.getDate()-diff);
+    return localDateStr(start);
+  }
   if(rangeId==='this_month'){start.setDate(1);return localDateStr(start);}
   if(rangeId==='this_year'){start.setMonth(0,1);return localDateStr(start);}
   if(rangeId==='last_30_days'){start.setDate(start.getDate()-29);return localDateStr(start);}
@@ -344,7 +425,15 @@ function applyRange(opts,rangeId){
   var dailyRows=(opts.dailyRows||[]).filter(function(r){return r.date>=start;});
   var displayCost=sumBy(allDays,'cost');
   var totalSessions=sumBy(allDays,'sessions');
-  var userMessages=sumBy(allDays,'messages');
+  // Daily message counts can include non-user/internal events in some providers.
+  // Keep message totals aligned to provider summary metric, then scale by selected range.
+  var baseMessages=Math.max(0,opts.userMessages||0);
+  var baseDailyMessages=sumBy(opts.allDays||[],'messages');
+  var rangeDailyMessages=sumBy(allDays,'messages');
+  var userMessages=baseMessages;
+  if(baseMessages>0&&baseDailyMessages>0){
+    userMessages=Math.round(baseMessages*(rangeDailyMessages/baseDailyMessages));
+  }
   var daysActive=allDays.filter(function(d){return d.sessions>0;}).length;
   var firstActive=null;
   for(var i=0;i<allDays.length;i++){if(allDays[i].sessions>0){firstActive=allDays[i].date+'T00:00:00.000Z';break;}}
@@ -360,6 +449,11 @@ function applyRange(opts,rangeId){
     weeklyMap[wk].codexCost+=d.codexCost||0;
   });
   var weeklySorted=Object.keys(weeklyMap).sort();
+  var baseModels=(opts.modelUsage&&opts.modelUsage.length)?opts.modelUsage:(opts.rawModels||[]);
+  var rangeRatio=(opts.displayCost||0)>0?displayCost/opts.displayCost:0;
+  var modelUsage=baseModels.map(function(m){
+    return {id:m.id,cost:(m.cost||0)*rangeRatio,provider:m.provider};
+  }).filter(function(m){return m.cost>0;}).sort(function(a,b){return b.cost-a.cost;});
 
   var next=Object.assign({},opts,{
     rangeId:rangeId,
@@ -376,7 +470,7 @@ function applyRange(opts,rangeId){
     costPerDay:daysActive>0?displayCost/daysActive:0,
     costPerSession:totalSessions>0?displayCost/totalSessions:0,
     streak:computeStreak(allDays),
-    modelUsage:null,
+    modelUsage:modelUsage,
     costCards:null
   });
 
@@ -390,7 +484,7 @@ function applyRange(opts,rangeId){
     next.badgeEls=badgeEls;
   }
 
-  next.pricingNote='Model-level cost breakdown is shown in the All Time range.';
+  next.pricingNote='Models are sorted by estimated cost usage for this selected range.';
   return next;
 }
 
@@ -415,8 +509,8 @@ function renderBarChart(container,allDays,maxMsg,accent,stacked){
       bg='linear-gradient(to top, '+CLAUDE_COLOR+' '+claudePct+'%, '+CODEX_COLOR+' '+claudePct+'%)';
     }
     var bar=el('div',{class:'bar',style:'height:'+(isEmpty?'2':h)+'px;background:'+(isEmpty?'#e2e8f0':bg)+';'});
-    var tip=d.date+' | '+fmtUSD(d.cost);
-    if(stacked){tip+='\nClaude '+fmtUSD(d.claudeCost||0)+' · Codex '+fmtUSD(d.codexCost||0);}
+    var tip=fullDateStr(d.date)+' | '+fmtUSD(d.cost);
+    if(stacked){tip+='\nClaude '+fmtUSD(d.claudeCost||0)+'\nCodex '+fmtUSD(d.codexCost||0);}
     else{tip+=', '+d.sessions+' sessions';}
     bar.appendChild(el('div',{class:'tooltip'},tip));
     group.appendChild(bar);group.appendChild(el('div',{class:'bar-label'},d.date.slice(5)));container.appendChild(group);
@@ -435,7 +529,7 @@ function renderWeeklyChart(container,weeklySorted,weeklyMap,accent,stacked){
     }
     var bar=el('div',{class:'bar',style:'height:'+h+'px;background:'+bg+';'});
     var tip=weekLabel(wk)+' | '+fmtUSD(w.cost);
-    if(stacked){tip+='\nClaude '+fmtUSD(w.claudeCost||0)+' · Codex '+fmtUSD(w.codexCost||0);}
+    if(stacked){tip+='\nClaude '+fmtUSD(w.claudeCost||0)+'\nCodex '+fmtUSD(w.codexCost||0);}
     else{tip+=', '+w.sessions+' sessions';}
     bar.appendChild(el('div',{class:'tooltip'},tip));
     group.appendChild(bar);group.appendChild(el('div',{class:'bar-label'},weekLabel(wk)));container.appendChild(group);
@@ -457,7 +551,7 @@ function renderPanel(panelEl,opts){
   var totalSpanDays=Math.ceil((new Date()-firstD)/86400000)+1;
   var sg=el('div',{class:'stats-grid'});
   var cc=el('div',{class:'stat-card'});cc.appendChild(el('div',{class:'stat-label'},'Total Est. Cost'));cc.appendChild(el('div',{class:'stat-value cost'},fmtUSD(opts.displayCost)));
-  cc.appendChild(el('div',{class:'stat-sub'},(opts.firstDate?new Date(opts.firstDate).toLocaleDateString():'-')+' - today'));
+  cc.appendChild(el('div',{class:'stat-sub'},fullDateFromIso(opts.firstDate)+' - today'));
   cc.appendChild(el('div',{class:'stat-sub'},totalSpanDays+'d span, '+opts.daysActive+' active'));sg.appendChild(cc);
   sg.appendChild(createStatCard('Cost / Day',fmtUSD(opts.costPerDay),'cost','avg across '+opts.daysActive+' days'));
   sg.appendChild(createStatCard('Cost / Session',fmtUSD(opts.costPerSession),'cost',opts.totalSessions+' total sessions'));
@@ -474,18 +568,24 @@ function renderPanel(panelEl,opts){
   var bc=el('div',{class:'bar-chart'});
   renderBarChart(bc,opts.allDays,opts.maxMsg,accent,opts.stacked);cc1.appendChild(bc);sec1.appendChild(cc1);panelEl.appendChild(sec1);
 
-  // Model usage (All tab) or Model cost cards (individual tabs)
+  // Weekly chart
+  if(opts.weeklySorted&&opts.weeklySorted.length>0){var sec3=el('div',{class:'section'});sec3.appendChild(el('h2',null,'Weekly Usage'));var cc3=el('div',{class:'chart-container'});if(opts.stacked){cc3.appendChild(makeLegend());}var wc=el('div',{class:'weekly-chart'});renderWeeklyChart(wc,opts.weeklySorted,opts.weeklyMap,accent,opts.stacked);cc3.appendChild(wc);sec3.appendChild(cc3);panelEl.appendChild(sec3);}
+
+  // Model usage
   if(opts.modelUsage&&opts.modelUsage.length>0){
     var sec2=el('div',{class:'section'});sec2.appendChild(el('h2',null,'Usage by Model'));
     var maxModelCost=opts.modelUsage[0].cost||1;
+    var showProviderBadge=!!opts.showProviderBadge;
     var muList=el('div',{class:'model-usage-list'});
     opts.modelUsage.forEach(function(m){
       var row=el('div',{class:'mu-row'});
       var left=el('div',{class:'mu-left'});
       left.appendChild(createModelTag(m.id));
-      var provCls=m.provider==='claude'?'claude':'codex';
-      var provBadge=el('span',{class:'sub-badge '+provCls});provBadge.textContent=m.provider==='claude'?'Claude':'Codex';
-      left.appendChild(provBadge);
+      if(showProviderBadge){
+        var provCls=m.provider==='claude'?'claude':'codex';
+        var provBadge=el('span',{class:'sub-badge '+provCls});provBadge.textContent=m.provider==='claude'?'Claude':'Codex';
+        left.appendChild(provBadge);
+      }
       row.appendChild(left);
       var right=el('div',{class:'mu-right'});
       var barW=Math.max(2,(m.cost/maxModelCost)*100);
@@ -496,24 +596,82 @@ function renderPanel(panelEl,opts){
       muList.appendChild(row);
     });
     sec2.appendChild(muList);panelEl.appendChild(sec2);
-  } else if(opts.costCards&&opts.costCards.length>0){
-    var sec2b=el('div',{class:'section'});sec2b.appendChild(el('h2',null,'Cost Breakdown by Model'));var cbd=el('div',{class:'cost-breakdown'});opts.costCards.forEach(function(c){cbd.appendChild(c);});sec2b.appendChild(cbd);panelEl.appendChild(sec2b);
   }
-
-  // Weekly chart
-  if(opts.weeklySorted&&opts.weeklySorted.length>0){var sec3=el('div',{class:'section'});sec3.appendChild(el('h2',null,'Weekly Usage'));var cc3=el('div',{class:'chart-container'});if(opts.stacked){cc3.appendChild(makeLegend());}var wc=el('div',{class:'weekly-chart'});renderWeeklyChart(wc,opts.weeklySorted,opts.weeklyMap,accent,opts.stacked);cc3.appendChild(wc);sec3.appendChild(cc3);panelEl.appendChild(sec3);}
 
   // Daily table
   if(opts.dailyRows&&opts.dailyRows.length>0){
-    var sec4=el('div',{class:'section'});sec4.appendChild(el('h2',null,'Daily Cost'));
+    var sec4=el('div',{class:'section'});
+    var dailyCostView=opts.dailyCostView==='model'?'model':(opts.stacked?'agent':'model');
+    var head=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:10px;'});
+    head.appendChild(el('h2',null,'Daily Cost'));
+    if(opts.stacked&&typeof opts.onDailyCostViewChange==='function'){
+      var viewToggle=el('div',{class:'daily-view-toggle'});
+      [{id:'agent',label:'Agent'},{id:'model',label:'Model'}].forEach(function(v){
+        var btn=el('button',{class:'daily-view-btn'+(dailyCostView===v.id?' active':''),'data-view':v.id,type:'button'},v.label);
+        btn.addEventListener('click',function(){
+          if(dailyCostView!==v.id)opts.onDailyCostViewChange(v.id);
+        });
+        viewToggle.appendChild(btn);
+      });
+      head.appendChild(viewToggle);
+    }
+    sec4.appendChild(head);
     var tbl=el('table');var thead=el('thead');var htr=el('tr');
-    htr.appendChild(el('th',null,'Date'));htr.appendChild(el('th',{class:'r'},'Sessions'));htr.appendChild(el('th',null,'Models'));htr.appendChild(el('th',{class:'r'},'Est. Cost'));
+    htr.appendChild(el('th',null,'Date'));htr.appendChild(el('th',{class:'r'},'Sessions'));htr.appendChild(el('th',null,dailyCostView==='agent'?'Agents':'Models'));htr.appendChild(el('th',{class:'r'},'Est. Cost'));
     thead.appendChild(htr);tbl.appendChild(thead);
     var tbody=el('tbody');
+    var modelCostById={};
+    var modelCostByKey={};
+    if(opts.modelUsage&&opts.modelUsage.length){
+      opts.modelUsage.forEach(function(m){
+        var id=m.id;
+        var key=modelUsageKey(id);
+        var cost=m.cost||0;
+        modelCostById[id]=Math.max(modelCostById[id]||0,cost);
+        modelCostByKey[key]=(modelCostByKey[key]||0)+cost;
+      });
+    }
+    function modelScore(id){
+      if(Object.prototype.hasOwnProperty.call(modelCostById,id))return modelCostById[id];
+      var key=modelUsageKey(id);
+      return modelCostByKey[key]||0;
+    }
     opts.dailyRows.forEach(function(row){
-      var tr=el('tr');tr.appendChild(el('td',null,row.date));tr.appendChild(el('td',{class:'num'},String(row.sessions)));
-      var tdM=el('td');if(row.models&&row.models.length){row.models.forEach(function(m){tdM.appendChild(createModelTag(m));tdM.appendChild(document.createTextNode(' '));});}else tdM.textContent='-';
-      tr.appendChild(tdM);tr.appendChild(el('td',{class:'cost-cell',style:'color:'+accent},fmtUSD(row.cost)));tbody.appendChild(tr);
+      var tr=el('tr');tr.appendChild(el('td',null,fullDateStr(row.date)));tr.appendChild(el('td',{class:'num'},String(row.sessions)));
+      var tdM=el('td');
+      var rowCostColor=accent;
+      var dominantModelId=null;
+      if(dailyCostView==='agent'&&opts.stacked){
+        var ac=rowAgentCosts(row);
+        var agents=[];
+        if(ac.claude>0)agents.push({label:'Claude',cls:'claude',cost:ac.claude});
+        if(ac.codex>0)agents.push({label:'Codex',cls:'codex',cost:ac.codex});
+        agents.sort(function(a,b){if(a.cost!==b.cost)return b.cost-a.cost;return a.label.localeCompare(b.label);});
+        if(agents.length){
+          agents.forEach(function(a){
+            var badge=el('span',{class:'sub-badge '+a.cls,style:'margin-left:0;margin-right:6px;'},a.label);
+            tdM.appendChild(badge);
+          });
+          rowCostColor=ac.codex>ac.claude?CODEX_COLOR:CLAUDE_COLOR;
+        }else{
+          tdM.textContent='-';
+        }
+      }else if(row.models&&row.models.length){
+        var sortedModels=row.models.slice().sort(function(a,b){
+          var rowCosts=row.modelCosts||{};
+          var saRow=rowCosts[a]||0,sbRow=rowCosts[b]||0;
+          if(saRow!==sbRow)return sbRow-saRow;
+          var sa=modelScore(a),sb=modelScore(b);
+          if(sa!==sb)return sb-sa;
+          var ka=modelSortKey(a),kb=modelSortKey(b);
+          if(ka!==kb)return ka-kb;
+          return a.localeCompare(b);
+        });
+        if(sortedModels.length)dominantModelId=sortedModels[0];
+        sortedModels.forEach(function(m){tdM.appendChild(createModelTag(m));tdM.appendChild(document.createTextNode(' '));});
+        if(dominantModelId)rowCostColor=colorForModel(dominantModelId);
+      }else tdM.textContent='-';
+      tr.appendChild(tdM);tr.appendChild(el('td',{class:'cost-cell',style:'color:'+rowCostColor},fmtUSD(row.cost)));tbody.appendChild(tr);
     });
     tbl.appendChild(tbody);sec4.appendChild(tbl);panelEl.appendChild(sec4);
   }
@@ -533,6 +691,7 @@ function main(){
   var hasClaude=CLAUDE!==null,hasCodex=CODEX!==null;
   var defaultTab=(typeof DEFAULT_TAB!=='undefined')?DEFAULT_TAB:'all';
   var selectedRange='this_month';
+  var allDailyCostView='agent';
 
   var claudeBase=hasClaude?buildOpts(CLAUDE):null;
   var codexBase=hasCodex?buildOpts(CODEX):null;
@@ -540,29 +699,50 @@ function main(){
 
   // Tabs
   var tabBar=document.getElementById('tab-bar');
-  [{id:'all',label:'All'},{id:'claude',label:'Claude'},{id:'codex',label:'Codex'}].forEach(function(t){
-    var btn=el('button',{class:'tab-btn','data-tab':t.id},t.label);btn.addEventListener('click',function(){switchTab(t.id);});tabBar.appendChild(btn);
+  [
+    {id:'all',label:'All'},
+    {id:'claude',label:'Claude',icon:'claude.png'},
+    {id:'codex',label:'Codex',icon:'codex.svg'}
+  ].forEach(function(t){
+    var meta=(typeof APP_META!=='undefined'&&APP_META)?APP_META:{};
+    var iconBase=meta.assetBase?toFileUrl(meta.assetBase):'';
+    var children=[];
+    if(t.icon&&iconBase)children.push(el('img',{class:'tab-icon',src:iconBase+'/'+t.icon,alt:t.label+' logo'}));
+    children.push(el('span',null,t.label));
+    var btn=el('button',{class:'tab-btn','data-tab':t.id},children);btn.addEventListener('click',function(){switchTab(t.id);});tabBar.appendChild(btn);
   });
 
   // Date range controls
-  var rangeBar=document.getElementById('range-bar');
+  var rangeSelect=document.getElementById('range-select');
   RANGE_OPTIONS.forEach(function(r){
-    var btn=el('button',{class:'range-btn','data-range':r.id},r.label);
-    btn.addEventListener('click',function(){setRange(r.id);});
-    rangeBar.appendChild(btn);
+    var option=el('option',{value:r.id},r.label);
+    rangeSelect.appendChild(option);
   });
+  rangeSelect.addEventListener('change',function(){setRange(rangeSelect.value);});
 
   function renderPanels(){
-    renderPanel(document.getElementById('panel-all'),applyRange(allBase,selectedRange));
-    if(hasClaude)renderPanel(document.getElementById('panel-claude'),applyRange(claudeBase,selectedRange));else renderNoData(document.getElementById('panel-claude'),'Claude Code','https://docs.anthropic.com/en/docs/claude-code');
-    if(hasCodex)renderPanel(document.getElementById('panel-codex'),applyRange(codexBase,selectedRange));else renderNoData(document.getElementById('panel-codex'),'Codex CLI','https://github.com/openai/codex');
+    var allOpts=applyRange(allBase,selectedRange);
+    allOpts.dailyCostView=allDailyCostView;
+    allOpts.onDailyCostViewChange=function(nextView){
+      allDailyCostView=nextView==='model'?'model':'agent';
+      renderPanels();
+    };
+    renderPanel(document.getElementById('panel-all'),allOpts);
+    if(hasClaude){
+      var claudeOpts=applyRange(claudeBase,selectedRange);
+      claudeOpts.dailyCostView='model';
+      renderPanel(document.getElementById('panel-claude'),claudeOpts);
+    }else renderNoData(document.getElementById('panel-claude'),'Claude Code','https://code.claude.com/docs/en/overview');
+    if(hasCodex){
+      var codexOpts=applyRange(codexBase,selectedRange);
+      codexOpts.dailyCostView='model';
+      renderPanel(document.getElementById('panel-codex'),codexOpts);
+    }else renderNoData(document.getElementById('panel-codex'),'Codex CLI','https://developers.openai.com/codex/cli/');
   }
 
   function setRange(id){
     selectedRange=id;
-    document.querySelectorAll('.range-btn').forEach(function(b){b.classList.remove('active');});
-    var activeBtn=document.querySelector('[data-range="'+id+'"]');
-    if(activeBtn)activeBtn.classList.add('active');
+    if(rangeSelect&&rangeSelect.value!==id)rangeSelect.value=id;
     renderPanels();
   }
 

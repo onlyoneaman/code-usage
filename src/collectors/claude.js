@@ -52,10 +52,15 @@ export function collectClaude() {
   const dailyArr = dmt.map(d => {
     let cost = 0;
     const dayModels = Object.keys(d.tokensByModel || {});
+    const modelCosts = {};
     for (const mid of dayModels) {
       const dayTok = (d.tokensByModel || {})[mid] || 0;
       const totalTok = modelTotalTokens[mid] || 0;
-      if (totalTok > 0) cost += modelCost[mid] * (dayTok / totalTok);
+      if (totalTok > 0) {
+        const dayCost = modelCost[mid] * (dayTok / totalTok);
+        cost += dayCost;
+        modelCosts[mid] = dayCost;
+      }
     }
     const act = dailyByDate[d.date];
     return {
@@ -63,6 +68,7 @@ export function collectClaude() {
       sessions: act ? act.sessionCount || 0 : 0,
       messages: act ? act.messageCount || 0 : 0,
       models: dayModels,
+      modelCosts,
     };
   });
 
@@ -147,10 +153,13 @@ export function collectClaude() {
     const p = getClaudePricing(model);
     const estCost = (r.outputTokens / 1e6) * p.output;
     recentCost += estCost;
+    const modelCosts = {};
+    modelCosts[model] = estCost;
     dailyArr.push({
       date, cost: estCost,
       sessions: r.sessions, messages: r.messages,
       models: [...r.models],
+      modelCosts,
     });
   }
   totalCost += recentCost;

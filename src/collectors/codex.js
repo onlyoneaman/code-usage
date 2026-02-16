@@ -16,7 +16,7 @@ export function collectCodex() {
   // Per-model aggregates
   const modelAgg = {};   // model → {input, output, cached, reasoning, cost}
   // Per-day aggregates
-  const dayAgg = {};     // date → {cost, sessions, messages, models: Set}
+  const dayAgg = {};     // date → {cost, sessions, messages, models: Set, modelCosts: {}}
 
   let totalSessions = 0;
   let totalMessages = 0;
@@ -47,11 +47,12 @@ export function collectCodex() {
     modelAgg[model].cost += cost;
 
     // Accumulate into day
-    if (!dayAgg[date]) dayAgg[date] = { cost: 0, sessions: 0, messages: 0, models: new Set() };
+    if (!dayAgg[date]) dayAgg[date] = { cost: 0, sessions: 0, messages: 0, models: new Set(), modelCosts: {} };
     dayAgg[date].cost += cost;
     dayAgg[date].sessions++;
     dayAgg[date].messages += messages;
     dayAgg[date].models.add(model);
+    dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
   }
 
   // --- Build output ---
@@ -84,6 +85,7 @@ export function collectCodex() {
     sessions: dayAgg[date].sessions,
     messages: dayAgg[date].messages,
     models: [...dayAgg[date].models],
+    modelCosts: dayAgg[date].modelCosts,
   }));
 
   // Streak
