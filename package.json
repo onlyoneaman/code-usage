@@ -1,6 +1,6 @@
 {
   "name": "code-usage",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Unified usage dashboard for AI coding tools (Claude Code, Codex CLI)",
   "type": "module",
   "bin": {
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node bin/code-usage.js",
     "pack:check": "npm pack --dry-run --cache ./.npm-cache",
-    "publish:public": "npm publish --access public --cache ./.npm-cache"
+    "publish": "npm publish --access public --cache ./.npm-cache --ignore-scripts"
   },
   "files": [
     "bin",
