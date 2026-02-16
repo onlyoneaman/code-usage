@@ -1,29 +1,40 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { collectClaude } from '../src/collectors/claude.js';
 import { collectCodex } from '../src/collectors/codex.js';
 import { buildAndOpen } from '../src/dashboard.js';
+import { APP_CONFIG } from '../src/config.js';
 
 const home = homedir();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const pkgPath = join(__dirname, '..', 'package.json');
+const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+const appMeta = {
+  name: pkg.name || 'code-usage',
+  version: pkg.version || '0.0.0',
+  authorName: APP_CONFIG.authorName,
+  authorUrl: APP_CONFIG.authorUrl,
+  repoUrl: APP_CONFIG.repoUrl,
+  packageUrl: APP_CONFIG.packageUrl || `https://www.npmjs.com/package/${encodeURIComponent(pkg.name || 'code-usage')}`,
+};
 
 const hasClaude = existsSync(join(home, '.claude', 'stats-cache.json'));
 
 let hasCodex = false;
 const codexSessionsDir = join(home, '.codex', 'sessions');
 if (existsSync(codexSessionsDir)) {
-  // Recursively check for any .jsonl files
   const findJsonl = (dir) => {
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.isFile() && entry.name.endsWith('.jsonl')) return true;
-        if (entry.isDirectory()) {
-          if (findJsonl(join(dir, entry.name))) return true;
-        }
+        if (entry.isDirectory() && findJsonl(join(dir, entry.name))) return true;
       }
-    } catch { /* skip unreadable dirs */ }
+    } catch { /* skip */ }
     return false;
   };
   hasCodex = findJsonl(codexSessionsDir);
@@ -37,17 +48,27 @@ if (!hasClaude && !hasCodex) {
   process.exit(0);
 }
 
-const claudeData = hasClaude ? collectClaude() : null;
-const codexData = hasCodex ? collectCodex() : null;
+let claudeData = null;
+if (hasClaude) {
+  process.stdout.write('Collecting Claude data... ');
+  claudeData = collectClaude();
+  console.log(`${claudeData.summary.totalSessions} sessions`);
+}
+
+let codexData = null;
+if (hasCodex) {
+  process.stdout.write('Collecting Codex data...  ');
+  codexData = collectCodex();
+  console.log(`${codexData.summary.totalSessions} sessions`);
+}
 
 let defaultTab = 'all';
 if (!hasClaude) defaultTab = 'codex';
 else if (!hasCodex) defaultTab = 'claude';
 
-await buildAndOpen({ claudeData, codexData, defaultTab });
+process.stdout.write('Building dashboard... ');
+await buildAndOpen({ claudeData, codexData, defaultTab, appMeta });
+console.log('done');
 
-const claudeSessions = claudeData?.stats?.totalSessions ?? 0;
-const codexSessions = codexData?.totalSessions ?? 0;
-console.log('Dashboard opened.');
-if (hasClaude) console.log(`  Claude: ${claudeSessions} sessions`);
-if (hasCodex) console.log(`  Codex:  ${codexSessions} sessions`);
+const dashPath = join(home, '.code-usage', 'current', 'code-usage-dashboard.html');
+console.log(`\nIf the dashboard didn't open, visit:\n  file://${dashPath}`);

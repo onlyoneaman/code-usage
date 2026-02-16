@@ -1,17 +1,22 @@
 {
   "name": "code-usage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Unified usage dashboard for AI coding tools (Claude Code, Codex CLI)",
   "type": "module",
   "bin": {
-    "code-usage": "./bin/code-usage.js"
+    "code-usage": "bin/code-usage.js"
+  },
+  "scripts": {
+    "start": "node bin/code-usage.js",
+    "pack:check": "npm pack --dry-run --cache ./.npm-cache",
+    "publish:public": "npm publish --access public --cache ./.npm-cache"
   },
   "files": [
     "bin",
     "src",
     "templates"
   ],
-  "author": "Aman Kumar (https://amankumar.ai)",
+  "author": "Aman (https://x.com/onlyoneaman)",
   "license": "MIT",
   "repository": {
     "type": "git",
