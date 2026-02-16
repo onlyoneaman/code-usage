@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Usage Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #f8fafc; color: #334155; line-height: 1.6; }
+  .header { padding: 32px 32px 16px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 24px; font-weight: 700; color: #0f172a; }
+  .header .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
+  .header .gen-time { font-size: 11px; color: #94a3b8; text-align: right; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 24px; background: #e2e8f0; border-radius: 10px; padding: 4px; width: fit-content; }
+  .tab-btn { padding: 8px 20px; border-radius: 8px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; }
+  .tab-btn:hover { color: #334155; }
+  .tab-btn.active[data-tab="all"] { background: #fff; color: #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .tab-btn.active[data-tab="claude"] { background: #fff; color: #8b5cf6; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .tab-btn.active[data-tab="codex"] { background: #fff; color: #10b981; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 6px; }
+  .stat-value { font-size: 28px; font-weight: 700; color: #0f172a; }
+  .stat-value.cost { color: var(--accent, #8b5cf6); }
+  .stat-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .section { margin-bottom: 28px; }
+  .section h2 { font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 14px; color: #94a3b8; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #e2e8f0; }
+  th.r { text-align: right; }
+  td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #475569; }
+  tr:hover td { background: #f8fafc; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.cost-cell { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .model-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .model-opus { background: #ede9fe; color: #6d28d9; }
+  .model-sonnet { background: #dbeafe; color: #1d4ed8; }
+  .model-haiku { background: #d1fae5; color: #047857; }
+  .model-codex { background: #d1fae5; color: #047857; }
+  .chart-container { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 40px 20px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); overflow: visible; }
+  .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 160px; position: relative; }
+  .bar-group { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 18px; }
+  .bar { width: 100%; min-width: 12px; max-width: 28px; border-radius: 3px 3px 0 0; transition: background 0.2s; cursor: pointer; position: relative; }
+  .bar:hover { filter: brightness(0.9); }
+  .bar-label { font-size: 9px; color: #94a3b8; margin-top: 6px; writing-mode: vertical-lr; text-orientation: mixed; transform: rotate(180deg); max-height: 50px; overflow: hidden; }
+  .tooltip { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: #1e293b; color: #f1f5f9; padding: 6px 10px; border-radius: 6px; font-size: 11px; white-space: nowrap; z-index: 9999; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .bar:hover .tooltip { display: block; }
+  .weekly-chart { display: flex; align-items: flex-end; gap: 12px; height: 160px; justify-content: center; position: relative; }
+  .weekly-chart .bar-group { display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 120px; }
+  .weekly-chart .bar { width: 100%; max-width: 120px; min-width: 40px; border-radius: 6px 6px 0 0; transition: background 0.2s; cursor: pointer; position: relative; }
+  .weekly-chart .bar-label { font-size: 11px; color: #64748b; margin-top: 8px; writing-mode: horizontal-tb; transform: none; text-align: center; max-height: none; font-weight: 500; }
+  .weekly-chart .bar-cost { font-size: 11px; font-weight: 600; margin-bottom: 4px; }
+  .cost-breakdown { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .cost-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .cost-card h3 { font-size: 14px; color: #64748b; margin-bottom: 12px; }
+  .cost-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+  .cost-row .label { color: #94a3b8; }
+  .cost-row .val { color: #475569; font-variant-numeric: tabular-nums; }
+  .cost-card .total-row { border-top: 1px solid #e2e8f0; margin-top: 8px; padding-top: 8px; font-weight: 700; }
+  .pricing-note { font-size: 12px; color: #94a3b8; margin-top: 16px; padding: 12px; background: #fff; border-radius: 8px; border: 1px solid #e2e8f0; }
+  .pricing-note a { color: #7c3aed; }
+  .no-data { text-align: center; padding: 80px 24px; color: #94a3b8; }
+  .no-data h3 { font-size: 18px; color: #64748b; margin-bottom: 8px; }
+  .no-data a { color: var(--accent, #8b5cf6); }
+  .footer { text-align: center; margin-top: 24px; padding: 20px 0 8px; font-size: 13px; color: #94a3b8; }
+  .footer code { background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #64748b; }
+  .footer a { color: #7c3aed; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  .footer p { margin: 4px 0; }
+  .freshness-banner { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .freshness-banner .date-info { color: #64748b; }
+  .freshness-banner .date-val { color: #0f172a; font-weight: 600; }
+  .sub-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 6px; vertical-align: middle; }
+  .sub-badge.claude { background: #ede9fe; color: #6d28d9; }
+  .sub-badge.codex { background: #d1fae5; color: #047857; }
+  @media (max-width: 768px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .container { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Code Usage Dashboard</h1>
+    <div class="sub">Estimated API-equivalent costs from local session data</div>
+  </div>
+  <div class="gen-time" id="gen-time"></div>
+</div>
+<div class="container">
+  <div class="tab-bar" id="tab-bar"></div>
+  <div id="panel-all" class="tab-panel"></div>
+  <div id="panel-claude" class="tab-panel"></div>
+  <div id="panel-codex" class="tab-panel"></div>
+  <div class="footer">
+    <p>Run <code>code-usage</code> to generate a fresh report.</p>
+    <p>Made by <a href="https://amankumar.ai">Aman</a></p>
+  </div>
+</div>
+<script>
+// DATA_PLACEHOLDER
+
+var CLAUDE_PRICING = {
+  'claude-opus-4-6':            { input: 5,   output: 25, cacheRead: 0.50, cacheWrite: 6.25  },
+  'claude-opus-4-5-20251101':   { input: 5,   output: 25, cacheRead: 0.50, cacheWrite: 6.25  },
+  'claude-opus-4-1-20250414':   { input: 15,  output: 75, cacheRead: 1.50, cacheWrite: 18.75 },
+  'claude-opus-4-20250514':     { input: 15,  output: 75, cacheRead: 1.50, cacheWrite: 18.75 },
+  'claude-sonnet-4-5-20250929': { input: 3,   output: 15, cacheRead: 0.30, cacheWrite: 3.75  },
+  'claude-sonnet-4-20250514':   { input: 3,   output: 15, cacheRead: 0.30, cacheWrite: 3.75  },
+  'claude-sonnet-3-7-20250219': { input: 3,   output: 15, cacheRead: 0.30, cacheWrite: 3.75  },
+  'claude-haiku-4-5-20251001':  { input: 1,   output: 5,  cacheRead: 0.10, cacheWrite: 1.25  },
+  'claude-haiku-3-5-20241022':  { input: 0.8, output: 4,  cacheRead: 0.08, cacheWrite: 1.00  },
+};
+var CODEX_PRICING_TABLE = {
+  'gpt-5.3-codex':     { input: 1.75, output: 14.00, cachedInput: 0.175, reasoning: 14.00 },
+  'gpt-5.2-codex':     { input: 1.75, output: 14.00, cachedInput: 0.175, reasoning: 14.00 },
+  'gpt-5.1-codex-max': { input: 1.25, output: 10.00, cachedInput: 0.125, reasoning: 10.00 },
+  'gpt-5.1-codex':     { input: 1.25, output: 10.00, cachedInput: 0.125, reasoning: 10.00 },
+  'gpt-5-codex':       { input: 1.25, output: 10.00, cachedInput: 0.125, reasoning: 10.00 },
+};
+function getClaudePrice(id) {
+  if (CLAUDE_PRICING[id]) return CLAUDE_PRICING[id];
+  var l = id.toLowerCase();
+  if (l.includes('opus') && (l.includes('4-6') || l.includes('4-5'))) return {input:5,output:25,cacheRead:0.50,cacheWrite:6.25};
+  if (l.includes('opus')) return {input:15,output:75,cacheRead:1.50,cacheWrite:18.75};
+  if (l.includes('sonnet')) return {input:3,output:15,cacheRead:0.30,cacheWrite:3.75};
+  if (l.includes('haiku')&&l.includes('3')) return {input:0.8,output:4,cacheRead:0.08,cacheWrite:1.00};
+  if (l.includes('haiku')) return {input:1,output:5,cacheRead:0.10,cacheWrite:1.25};
+  return {input:5,output:25,cacheRead:0.50,cacheWrite:6.25};
+}
+function getCodexPrice(id) {
+  if (CODEX_PRICING_TABLE[id]) return CODEX_PRICING_TABLE[id];
+  var l = id.toLowerCase();
+  if (l.includes('5.3')||l.includes('5.2')) return {input:1.75,output:14.00,cachedInput:0.175,reasoning:14.00};
+  return {input:1.25,output:10.00,cachedInput:0.125,reasoning:10.00};
+}
+
+function fmt(n) { if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return String(n); }
+function fmtUSD(n) { return '$'+n.toFixed(2); }
+function pad2(n) { return n<10?'0'+n:String(n); }
+function localDateStr(d) { return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function el(tag, attrs, children) {
+  var e = document.createElement(tag);
+  if (attrs) for (var k in attrs) {
+    if (k==='class') e.className=attrs[k]; else if (k==='style') e.style.cssText=attrs[k]; else e.setAttribute(k,attrs[k]);
+  }
+  if (children) { if (typeof children==='string') e.textContent=children; else if (Array.isArray(children)) children.forEach(function(c){if(c)e.appendChild(c);}); else e.appendChild(children); }
+  return e;
+}
+function createStatCard(label,value,cls,sub) {
+  var card=el('div',{class:'stat-card'});card.appendChild(el('div',{class:'stat-label'},label));card.appendChild(el('div',{class:'stat-value'+(cls?' '+cls:'')},value));if(sub)card.appendChild(el('div',{class:'stat-sub'},sub));return card;
+}
+function createCostRow(label,val,isTotal) {
+  var row=el('div',{class:'cost-row'+(isTotal?' total-row':'')});row.appendChild(el('span',{class:'label'},label));row.appendChild(el('span',{class:'val'},val));return row;
+}
+var MODEL_ORDER=['opus-4-6','opus-4-5','opus-4-1','opus-4','sonnet-4-5','sonnet-4','sonnet-3-7','haiku-4-5','haiku-3-5','gpt-5.3','gpt-5.2','gpt-5.1','gpt-5-codex'];
+function modelSortKey(id){for(var i=0;i<MODEL_ORDER.length;i++){if(id.includes(MODEL_ORDER[i]))return i;}return 99;}
+function createModelTag(id) {
+  var isCodex=id.startsWith('gpt-');
+  if(isCodex) return el('span',{class:'model-tag model-codex'},id);
+  var name=id.replace('claude-','').replace(/-\d{8}$/,'');var parts=name.split('-');
+  var family=parts[0].charAt(0).toUpperCase()+parts[0].slice(1);var version=parts.slice(1).join('.');
+  name=family+' '+version;
+  var cls='model-tag model-sonnet';if(id.includes('opus'))cls='model-tag model-opus';else if(id.includes('haiku'))cls='model-tag model-haiku';
+  return el('span',{class:cls},name);
+}
+function getWeekStart(ds){var d=new Date(ds+'T12:00:00');var day=d.getDay();var diff=day===0?6:day-1;d.setDate(d.getDate()-diff);return localDateStr(d);}
+function weekLabel(monStr){var mon=new Date(monStr+'T12:00:00');var sun=new Date(mon);sun.setDate(sun.getDate()+6);if(mon.getMonth()===sun.getMonth())return MONTHS[mon.getMonth()]+' '+mon.getDate()+'-'+sun.getDate();return MONTHS[mon.getMonth()]+' '+mon.getDate()+' - '+MONTHS[sun.getMonth()]+' '+sun.getDate();}
+
+function calcClaudeCost(data,extra){
+  var mu=data.modelUsage||{},tc=0,mc={};
+  for(var model in mu){var u=mu[model],p=getClaudePrice(model),m=1e6;var c=(u.inputTokens||0)/m*p.input+(u.outputTokens||0)/m*p.output+(u.cacheReadInputTokens||0)/m*p.cacheRead+(u.cacheCreationInputTokens||0)/m*p.cacheWrite;mc[model]=c;tc+=c;}
+  var rc=0;if(extra&&extra.recentSessions>0){var tk=0;for(var k in mu){var uu=mu[k];tk+=(uu.inputTokens||0)+(uu.outputTokens||0);}var avg=tk>0?tc/tk:15/1e6;rc=(extra.recentOutputTokens||0)*avg;}
+  return{totalCost:tc,recentCost:rc,modelCosts:mc};
+}
+function calcCodexCost(data){
+  var mu=data.modelUsage||{},tc=0,mc={};
+  for(var model in mu){var u=mu[model],p=getCodexPrice(model),m=1e6;var nc=Math.max(0,(u.inputTokens||0)-(u.cachedInputTokens||0));var c=nc/m*p.input+(u.cachedInputTokens||0)/m*p.cachedInput+(u.outputTokens||0)/m*p.output+(u.reasoningOutputTokens||0)/m*p.reasoning;mc[model]=c;tc+=c;}
+  return{totalCost:tc,recentCost:0,modelCosts:mc};
+}
+
+function renderBarChart(container,allDays,maxMsg,accentColor,dayCostMap){
+  container.textContent='';
+  allDays.forEach(function(d){
+    var isEmpty=d.sessionCount===0;var h=isEmpty?0:Math.max(4,(d.messageCount/maxMsg)*140);
+    var group=el('div',{class:'bar-group'});var bar=el('div',{class:'bar',style:'height:'+(isEmpty?'2':h)+'px;background:'+(isEmpty?'#e2e8f0':accentColor)+';'});
+    var cost=dayCostMap[d.date]||0;bar.appendChild(el('div',{class:'tooltip'},d.date+' | '+fmtUSD(cost)+', '+d.sessionCount+' sessions'));
+    group.appendChild(bar);group.appendChild(el('div',{class:'bar-label'},d.date==='Today'?'Today':d.date.slice(5)));container.appendChild(group);
+  });
+}
+function renderWeeklyChart(container,weeklySorted,weeklyMap,accentColor){
+  container.textContent='';var maxCost=1;weeklySorted.forEach(function(wk){if(weeklyMap[wk].cost>maxCost)maxCost=weeklyMap[wk].cost;});
+  weeklySorted.forEach(function(wk){var w=weeklyMap[wk];var h=Math.max(8,(w.cost/maxCost)*130);var group=el('div',{class:'bar-group'});
+    group.appendChild(el('div',{class:'bar-cost',style:'color:'+accentColor},fmtUSD(w.cost)));
+    var bar=el('div',{class:'bar',style:'height:'+h+'px;background:'+accentColor+';'});bar.appendChild(el('div',{class:'tooltip'},weekLabel(wk)+' | '+fmtUSD(w.cost)+', '+w.sessions+' sessions'));
+    group.appendChild(bar);group.appendChild(el('div',{class:'bar-label'},weekLabel(wk)));container.appendChild(group);
+  });
+}
+function buildDailyTable(container,rows,accentColor){
+  container.textContent='';
+  rows.forEach(function(row){var tr=el('tr');tr.appendChild(el('td',null,row.date));tr.appendChild(el('td',{class:'num'},fmt(row.tokens)));
+    var tdM=el('td');if(row.models&&row.models.length){row.models.forEach(function(m){tdM.appendChild(createModelTag(m));tdM.appendChild(document.createTextNode(' '));});}else tdM.textContent='-';
+    tr.appendChild(tdM);tr.appendChild(el('td',{class:'cost-cell',style:'color:'+accentColor},(row.isRecent?'~':'')+fmtUSD(row.cost)));container.appendChild(tr);
+  });
+}
+
+function renderPanel(panelEl,opts){
+  var accent=opts.accent,displayCost=opts.displayCost,daysActive=opts.daysActive,totalSess=opts.totalSessions;
+  var costPerDay=daysActive>0?displayCost/daysActive:0,costPerSession=totalSess>0?displayCost/totalSess:0;
+  var firstD=opts.firstDate?new Date(opts.firstDate):new Date(),now=new Date(),totalSpanDays=Math.ceil((now-firstD)/86400000)+1;
+  panelEl.textContent='';panelEl.style.setProperty('--accent',accent);
+
+  var fb=el('div',{class:'freshness-banner'});
+  var s1=el('span',{class:'date-info'});s1.appendChild(document.createTextNode('Sessions: '));s1.appendChild(el('span',{class:'date-val'},String(totalSess)));fb.appendChild(s1);
+  if(opts.badgeEls){opts.badgeEls.forEach(function(b){fb.appendChild(b);});}
+  panelEl.appendChild(fb);
+
+  var sg=el('div',{class:'stats-grid'});
+  var cc=el('div',{class:'stat-card'});cc.appendChild(el('div',{class:'stat-label'},'Total Est. Cost'));cc.appendChild(el('div',{class:'stat-value cost'},fmtUSD(displayCost)));
+  cc.appendChild(el('div',{class:'stat-sub'},(opts.firstDate?new Date(opts.firstDate).toLocaleDateString():'-')+' - today'));
+  cc.appendChild(el('div',{class:'stat-sub'},totalSpanDays+'d span, '+daysActive+' active'));sg.appendChild(cc);
+  sg.appendChild(createStatCard('Cost / Day',fmtUSD(costPerDay),'cost','avg across '+daysActive+' days'));
+  sg.appendChild(createStatCard('Cost / Session',fmtUSD(costPerSession),'cost',totalSess+' total sessions'));
+  sg.appendChild(createStatCard('Streak',opts.streak+' days'));
+  sg.appendChild(createStatCard('Messages',opts.userMessages.toLocaleString()));
+  sg.appendChild(createStatCard('Output Tokens',fmt(opts.outputTokens)));
+  if(opts.extraCards)opts.extraCards.forEach(function(c){sg.appendChild(c);});
+  panelEl.appendChild(sg);
+
+  var sec1=el('div',{class:'section'});sec1.appendChild(el('h2',null,'Daily Activity'));
+  var cc1=el('div',{class:'chart-container'});var bc=el('div',{class:'bar-chart'});
+  renderBarChart(bc,opts.allDays,opts.maxMsg,accent,opts.dayCostMap);cc1.appendChild(bc);sec1.appendChild(cc1);panelEl.appendChild(sec1);
+
+  if(opts.costCards&&opts.costCards.length>0){var sec2=el('div',{class:'section'});sec2.appendChild(el('h2',null,'Cost Breakdown by Model'));var cbd=el('div',{class:'cost-breakdown'});opts.costCards.forEach(function(c){cbd.appendChild(c);});sec2.appendChild(cbd);panelEl.appendChild(sec2);}
+
+  if(opts.weeklySorted&&opts.weeklySorted.length>0){var sec3=el('div',{class:'section'});sec3.appendChild(el('h2',null,'Weekly Usage'));var cc3=el('div',{class:'chart-container'});var wc=el('div',{class:'weekly-chart'});renderWeeklyChart(wc,opts.weeklySorted,opts.weeklyMap,accent);cc3.appendChild(wc);sec3.appendChild(cc3);panelEl.appendChild(sec3);}
+
+  if(opts.dailyRows&&opts.dailyRows.length>0){var sec4=el('div',{class:'section'});sec4.appendChild(el('h2',null,'Daily Cost'));
+    var tbl=el('table');var thead=el('thead');var htr=el('tr');htr.appendChild(el('th',null,'Date'));htr.appendChild(el('th',{class:'r'},'Tokens'));htr.appendChild(el('th',null,'Models'));htr.appendChild(el('th',{class:'r'},'Est. Cost'));thead.appendChild(htr);tbl.appendChild(thead);
+    var tbody=el('tbody');buildDailyTable(tbody,opts.dailyRows,accent);tbl.appendChild(tbody);sec4.appendChild(tbl);panelEl.appendChild(sec4);}
+
+  if(opts.pricingNote){var pn=el('div',{class:'pricing-note'});pn.textContent=opts.pricingNote;panelEl.appendChild(pn);}
+}
+
+function renderNoData(panelEl,toolName,installUrl){
+  panelEl.textContent='';var nd=el('div',{class:'no-data'});nd.appendChild(el('h3',null,'No '+toolName+' usage data found'));
+  var p=el('p');p.appendChild(document.createTextNode('Install '));p.appendChild(el('a',{href:installUrl},toolName));p.appendChild(document.createTextNode(' and use it to start tracking.'));
+  nd.appendChild(p);panelEl.appendChild(nd);
+}
+
+function makeBadge(text,cls){var b=el('span',{class:'sub-badge '+cls});b.textContent=text;return el('span',{class:'date-info'},[b]);}
+
+function buildClaudeOpts(data,extra){
+  var costs=calcClaudeCost(data,extra),mu=data.modelUsage||{},daily=data.dailyActivity||[],hasRecent=extra&&extra.recentSessions>0;
+  var displayCost=costs.totalCost+costs.recentCost,userMsgs=(extra?extra.userMessages:0)+(extra?extra.recentUserMessages:0);
+  var totalSess=(data.totalSessions||0)+(extra?extra.recentSessions:0),daysActive=daily.length+(hasRecent?1:0);
+  var activeDates={};daily.forEach(function(d){activeDates[d.date]=true;});var now=new Date();if(hasRecent)activeDates[localDateStr(now)]=true;
+  var streak=0,check=new Date(now);while(activeDates[localDateStr(check)]){streak++;check.setDate(check.getDate()-1);}
+  var outTok=0;for(var k in mu)outTok+=mu[k].outputTokens||0;
+  var dailyByDate={};daily.forEach(function(d){dailyByDate[d.date]=d;});
+  var allDays=[],firstD=data.firstSessionDate?new Date(data.firstSessionDate):new Date(),todayStr=localDateStr(now),cursor=new Date(firstD);
+  while(localDateStr(cursor)<=todayStr){var ds=localDateStr(cursor);if(dailyByDate[ds])allDays.push(dailyByDate[ds]);else if(ds===todayStr&&hasRecent)allDays.push({date:'Today',messageCount:extra.recentUserMessages||0,sessionCount:extra.recentSessions});else allDays.push({date:ds,messageCount:0,sessionCount:0});cursor.setDate(cursor.getDate()+1);}
+  if(hasRecent&&dailyByDate[todayStr]){var last=allDays[allDays.length-1];last.messageCount+=extra.recentUserMessages||0;last.sessionCount+=extra.recentSessions||0;}
+  var maxMsg=1;allDays.forEach(function(d){if(d.messageCount>maxMsg)maxMsg=d.messageCount;});
+  var dmt=data.dailyModelTokens||[],dmtTotals={};dmt.forEach(function(d){for(var m in(d.tokensByModel||{})){dmtTotals[m]=(dmtTotals[m]||0)+d.tokensByModel[m];}});
+  var dmtCache={};for(var mk in mu){var pk=getClaudePrice(mk);dmtCache[mk]=(mu[mk].cacheReadInputTokens||0)/1e6*pk.cacheRead+(mu[mk].cacheCreationInputTokens||0)/1e6*pk.cacheWrite;}
+  var dayCostMap={};dmt.forEach(function(d){var c=0;for(var m in(d.tokensByModel||{})){var t=d.tokensByModel[m]||0;var p=getClaudePrice(m);c+=t/1e6*((p.input+p.output)/2);c+=(dmtCache[m]||0)*(dmtTotals[m]>0?t/dmtTotals[m]:0);}dayCostMap[d.date]=c;});
+  if(hasRecent)dayCostMap['Today']=costs.recentCost;
+  var costCards=[],sortedModels=Object.keys(mu).sort(function(a,b){return modelSortKey(a)-modelSortKey(b);});
+  sortedModels.forEach(function(model){var u=mu[model],p=getClaudePrice(model),m=1e6;var iC=(u.inputTokens||0)/m*p.input,oC=(u.outputTokens||0)/m*p.output,crC=(u.cacheReadInputTokens||0)/m*p.cacheRead,cwC=(u.cacheCreationInputTokens||0)/m*p.cacheWrite,tot=iC+oC+crC+cwC;
+    var card=el('div',{class:'cost-card'});var h3=el('h3');h3.appendChild(createModelTag(model));card.appendChild(h3);
+    card.appendChild(createCostRow('Input ('+fmt(u.inputTokens||0)+')',fmtUSD(iC)));card.appendChild(createCostRow('Output ('+fmt(u.outputTokens||0)+')',fmtUSD(oC)));
+    card.appendChild(createCostRow('Cache Read ('+fmt(u.cacheReadInputTokens||0)+')',fmtUSD(crC)));card.appendChild(createCostRow('Cache Write ('+fmt(u.cacheCreationInputTokens||0)+')',fmtUSD(cwC)));
+    card.appendChild(createCostRow('Total',fmtUSD(tot),true));costCards.push(card);});
+  var weeklyMap={},dayActivity={};daily.forEach(function(d){dayActivity[d.date]=d;});
+  dmt.forEach(function(d){var wk=getWeekStart(d.date);if(!weeklyMap[wk])weeklyMap[wk]={sessions:0,cost:0};var act=dayActivity[d.date];if(act)weeklyMap[wk].sessions+=act.sessionCount||0;for(var m in(d.tokensByModel||{})){var t=d.tokensByModel[m]||0;var pr=getClaudePrice(m);weeklyMap[wk].cost+=t/1e6*((pr.input+pr.output)/2);var share=dmtTotals[m]>0?t/dmtTotals[m]:0;weeklyMap[wk].cost+=(dmtCache[m]||0)*share;}});
+  if(hasRecent){var tw=getWeekStart(todayStr);if(!weeklyMap[tw])weeklyMap[tw]={sessions:0,cost:0};weeklyMap[tw].sessions+=extra.recentSessions||0;weeklyMap[tw].cost+=costs.recentCost;}
+  var weeklySorted=Object.keys(weeklyMap).sort();
+  var dailyRows=[];dmt.forEach(function(d){var models=Object.keys(d.tokensByModel||{});var dc=0,dt=0;models.forEach(function(m){var t=d.tokensByModel[m]||0;var p=getClaudePrice(m);dc+=t/1e6*((p.input+p.output)/2);var sh=dmtTotals[m]>0?t/dmtTotals[m]:0;dc+=(dmtCache[m]||0)*sh;dt+=t;});dailyRows.push({date:d.date,tokens:dt,models:models,cost:dc});});dailyRows.reverse();
+  if(hasRecent)dailyRows.unshift({date:'Today',tokens:extra.recentOutputTokens||0,models:extra.recentModels&&extra.recentModels.length?extra.recentModels:null,cost:costs.recentCost,isRecent:true});
+  var extraCards=[];if(extra){extraCards.push(createStatCard('Lines','+'+fmt(extra.linesAdded||0)+' / -'+fmt(extra.linesRemoved||0)));extraCards.push(createStatCard('Files Modified',fmt(extra.filesModified||0)));}
+  return{accent:'#8b5cf6',displayCost:displayCost,daysActive:daysActive,totalSessions:totalSess,streak:streak,userMessages:userMsgs,outputTokens:outTok,firstDate:data.firstSessionDate,allDays:allDays,maxMsg:maxMsg,dayCostMap:dayCostMap,costCards:costCards,weeklySorted:weeklySorted,weeklyMap:weeklyMap,dailyRows:dailyRows,extraCards:extraCards,badgeEls:[makeBadge('Claude Max','claude')],pricingNote:'Pricing (per MTok): Opus 4.5/4.6: In $5, Out $25, CR $0.50, CW $6.25 | Sonnet 4.5: In $3, Out $15, CR $0.30, CW $3.75 | Haiku 4.5: In $1, Out $5, CR $0.10, CW $1.25. Daily costs include proportional cache. If on Claude Max, you pay a flat monthly rate.'};
+}
+
+function buildCodexOpts(data){
+  var costs=calcCodexCost(data),mu=data.modelUsage||{},daily=data.dailyActivity||[],dmt=data.dailyModelTokens||[];
+  var displayCost=costs.totalCost,totalSess=data.totalSessions||0,daysActive=daily.length,userMsgs=data.totalMessages||0;
+  var activeDates={};daily.forEach(function(d){activeDates[d.date]=true;});var now=new Date();
+  var streak=0,check=new Date(now);while(activeDates[localDateStr(check)]){streak++;check.setDate(check.getDate()-1);}
+  var outTok=0;for(var k in mu)outTok+=mu[k].outputTokens||0;
+  var dailyByDate={};daily.forEach(function(d){dailyByDate[d.date]=d;});
+  var allDays=[],firstD=data.firstSessionDate?new Date(data.firstSessionDate):new Date(),todayStr=localDateStr(now),cursor=new Date(firstD);
+  while(localDateStr(cursor)<=todayStr){var ds=localDateStr(cursor);if(dailyByDate[ds])allDays.push(dailyByDate[ds]);else allDays.push({date:ds,messageCount:0,sessionCount:0});cursor.setDate(cursor.getDate()+1);}
+  var maxMsg=1;allDays.forEach(function(d){if(d.messageCount>maxMsg)maxMsg=d.messageCount;});
+  var dmtTotals={};dmt.forEach(function(d){for(var m in(d.tokensByModel||{})){dmtTotals[m]=(dmtTotals[m]||0)+d.tokensByModel[m];}});
+  var dayCostMap={};dmt.forEach(function(d){var c=0;for(var m in(d.tokensByModel||{})){var t=d.tokensByModel[m]||0;var p=getCodexPrice(m);c+=t/1e6*((p.input+p.output)/2);}dayCostMap[d.date]=c;});
+  var costCards=[],sortedModels=Object.keys(mu).sort(function(a,b){return modelSortKey(a)-modelSortKey(b);});
+  sortedModels.forEach(function(model){var u=mu[model],p=getCodexPrice(model),m=1e6;var nc=Math.max(0,(u.inputTokens||0)-(u.cachedInputTokens||0));
+    var iC=nc/m*p.input,ciC=(u.cachedInputTokens||0)/m*p.cachedInput,oC=(u.outputTokens||0)/m*p.output,rC=(u.reasoningOutputTokens||0)/m*p.reasoning,tot=iC+ciC+oC+rC;
+    var card=el('div',{class:'cost-card'});var h3=el('h3');h3.appendChild(createModelTag(model));card.appendChild(h3);
+    card.appendChild(createCostRow('Input ('+fmt(nc)+')',fmtUSD(iC)));card.appendChild(createCostRow('Cached ('+fmt(u.cachedInputTokens||0)+')',fmtUSD(ciC)));
+    card.appendChild(createCostRow('Output ('+fmt(u.outputTokens||0)+')',fmtUSD(oC)));card.appendChild(createCostRow('Reasoning ('+fmt(u.reasoningOutputTokens||0)+')',fmtUSD(rC)));
+    card.appendChild(createCostRow('Total',fmtUSD(tot),true));costCards.push(card);});
+  var weeklyMap={},dayActivity={};daily.forEach(function(d){dayActivity[d.date]=d;});
+  dmt.forEach(function(d){var wk=getWeekStart(d.date);if(!weeklyMap[wk])weeklyMap[wk]={sessions:0,cost:0};var act=dayActivity[d.date];if(act)weeklyMap[wk].sessions+=act.sessionCount||0;for(var m in(d.tokensByModel||{})){var t=d.tokensByModel[m]||0;var pr=getCodexPrice(m);weeklyMap[wk].cost+=t/1e6*((pr.input+pr.output)/2);}});
+  var weeklySorted=Object.keys(weeklyMap).sort();
+  var dailyRows=[];dmt.forEach(function(d){var models=Object.keys(d.tokensByModel||{});var dc=0,dt=0;models.forEach(function(m){var t=d.tokensByModel[m]||0;var p=getCodexPrice(m);dc+=t/1e6*((p.input+p.output)/2);dt+=t;});dailyRows.push({date:d.date,tokens:dt,models:models,cost:dc});});dailyRows.reverse();
+  return{accent:'#10b981',displayCost:displayCost,daysActive:daysActive,totalSessions:totalSess,streak:streak,userMessages:userMsgs,outputTokens:outTok,firstDate:data.firstSessionDate,allDays:allDays,maxMsg:maxMsg,dayCostMap:dayCostMap,costCards:costCards,weeklySorted:weeklySorted,weeklyMap:weeklyMap,dailyRows:dailyRows,extraCards:[],badgeEls:[makeBadge('Codex Pro','codex')],pricingNote:'Pricing (per MTok): gpt-5.3-codex: In $1.75, Out $14, Cached $0.175 | gpt-5.1-codex: In $1.25, Out $10, Cached $0.125. If on Codex Pro subscription, you pay a flat monthly rate.'};
+}
+
+function buildAllOpts(claudeOpts,codexOpts){
+  var hc=!!claudeOpts,hx=!!codexOpts;
+  if(hc&&!hx){var o=Object.assign({},claudeOpts);o.accent='#3b82f6';return o;}
+  if(hx&&!hc){var o2=Object.assign({},codexOpts);o2.accent='#3b82f6';return o2;}
+  var displayCost=claudeOpts.displayCost+codexOpts.displayCost,totalSess=claudeOpts.totalSessions+codexOpts.totalSessions;
+  var userMsgs=claudeOpts.userMessages+codexOpts.userMessages,outTok=claudeOpts.outputTokens+codexOpts.outputTokens;
+  var dayMap={};function addDays(days){if(!days)return;days.forEach(function(d){var key=d.date;if(!dayMap[key])dayMap[key]={date:key,messageCount:0,sessionCount:0};dayMap[key].messageCount+=d.messageCount;dayMap[key].sessionCount+=d.sessionCount;});}
+  addDays(claudeOpts.allDays);addDays(codexOpts.allDays);
+  var allDates=Object.keys(dayMap).sort();var firstDate=allDates.length?allDates[0]+'T00:00:00.000Z':null;var now=new Date();var allDays=[];
+  if(allDates.length){var cursor=new Date(allDates[0]+'T12:00:00');var todayStr=localDateStr(now);while(localDateStr(cursor)<=todayStr){var ds=localDateStr(cursor);allDays.push(dayMap[ds]||{date:ds,messageCount:0,sessionCount:0});cursor.setDate(cursor.getDate()+1);}}
+  var maxMsg=1;allDays.forEach(function(d){if(d.messageCount>maxMsg)maxMsg=d.messageCount;});
+  var daysActive=allDays.filter(function(d){return d.sessionCount>0;}).length;
+  var activeDates={};allDays.forEach(function(d){if(d.sessionCount>0)activeDates[d.date]=true;});
+  var streak=0,check=new Date(now);while(activeDates[localDateStr(check)]){streak++;check.setDate(check.getDate()-1);}
+  var dayCostMap={};function addCosts(map){if(!map)return;for(var d in map){dayCostMap[d]=(dayCostMap[d]||0)+map[d];}}addCosts(claudeOpts.dayCostMap);addCosts(codexOpts.dayCostMap);
+  var costCards=[].concat(claudeOpts.costCards).concat(codexOpts.costCards);
+  var weeklyMap={};function addW(wm){if(!wm)return;for(var wk in wm){if(!weeklyMap[wk])weeklyMap[wk]={sessions:0,cost:0};weeklyMap[wk].sessions+=wm[wk].sessions;weeklyMap[wk].cost+=wm[wk].cost;}}addW(claudeOpts.weeklyMap);addW(codexOpts.weeklyMap);
+  var weeklySorted=Object.keys(weeklyMap).sort();
+  var drMap={};function addDR(rows){if(!rows)return;rows.forEach(function(r){if(!drMap[r.date])drMap[r.date]={date:r.date,tokens:0,models:[],cost:0,isRecent:r.isRecent};drMap[r.date].tokens+=r.tokens;drMap[r.date].cost+=r.cost;if(r.models)r.models.forEach(function(m){if(drMap[r.date].models.indexOf(m)===-1)drMap[r.date].models.push(m);});});}
+  addDR(claudeOpts.dailyRows);addDR(codexOpts.dailyRows);
+  var dailyRows=Object.keys(drMap).sort().reverse().map(function(d){return drMap[d];});
+  return{accent:'#3b82f6',displayCost:displayCost,daysActive:daysActive,totalSessions:totalSess,streak:streak,userMessages:userMsgs,outputTokens:outTok,firstDate:firstDate,allDays:allDays,maxMsg:maxMsg,dayCostMap:dayCostMap,costCards:costCards,weeklySorted:weeklySorted,weeklyMap:weeklyMap,dailyRows:dailyRows,extraCards:[],badgeEls:[makeBadge('Claude','claude'),makeBadge('Codex','codex')],pricingNote:'Combined view. See individual Claude and Codex tabs for detailed pricing breakdowns.'};
+}
+
+function main(){
+  var hasClaude=typeof CLAUDE_DATA!=='undefined'&&CLAUDE_DATA!==null;
+  var hasCodex=typeof CODEX_DATA!=='undefined'&&CODEX_DATA!==null;
+  var defaultTab=(typeof DEFAULT_TAB!=='undefined')?DEFAULT_TAB:'all';
+  var claudeOpts=hasClaude?buildClaudeOpts(CLAUDE_DATA,CLAUDE_EXTRA):null;
+  var codexOpts=hasCodex?buildCodexOpts(CODEX_DATA):null;
+  var allOpts=buildAllOpts(claudeOpts,codexOpts);
+  var tabBar=document.getElementById('tab-bar');
+  [{id:'all',label:'All'},{id:'claude',label:'Claude'},{id:'codex',label:'Codex'}].forEach(function(t){
+    var btn=el('button',{class:'tab-btn','data-tab':t.id},t.label);btn.addEventListener('click',function(){switchTab(t.id);});tabBar.appendChild(btn);
+  });
+  renderPanel(document.getElementById('panel-all'),allOpts);
+  if(hasClaude)renderPanel(document.getElementById('panel-claude'),claudeOpts);else renderNoData(document.getElementById('panel-claude'),'Claude Code','https://docs.anthropic.com/en/docs/claude-code');
+  if(hasCodex)renderPanel(document.getElementById('panel-codex'),codexOpts);else renderNoData(document.getElementById('panel-codex'),'Codex CLI','https://github.com/openai/codex');
+  function switchTab(id){document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});document.querySelector('[data-tab="'+id+'"]').classList.add('active');document.getElementById('panel-'+id).classList.add('active');history.replaceState(null,'','#'+id);}
+  var hash=location.hash.replace('#','');if(['all','claude','codex'].indexOf(hash)!==-1)switchTab(hash);else switchTab(defaultTab);
+}
+
+if(typeof CLAUDE_DATA!=='undefined'||typeof CODEX_DATA!=='undefined'){main();}
+else{document.querySelector('.container').insertAdjacentElement('afterbegin',el('div',{class:'no-data'},'No data. Run code-usage to generate.'));}
+</script>
+</body>
+</html>
