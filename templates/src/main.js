@@ -56,7 +56,7 @@ function renderFooter(){
   var footerMeta=document.getElementById('footer-meta');
   if(!footerMeta)return;
 
-  var meta=(typeof APP_META!=='undefined'&&APP_META)?APP_META:{};
+  var meta=(typeof DATA!=='undefined'&&DATA&&DATA.appMeta)?DATA.appMeta:{};
   var authorName=meta.authorName||'Aman';
   var authorUrl=meta.authorUrl||'https://x.com/onlyoneaman';
   var repoUrl=meta.repoUrl||'https://github.com/onlyoneaman/code-usage';
@@ -537,8 +537,9 @@ function renderNoData(panelEl,toolName,installUrl){
 
 /* ── Main ────────────────────────────────────────────────── */
 function main(){
+  var CLAUDE=DATA.claude,CODEX=DATA.codex;
   var hasClaude=CLAUDE!==null,hasCodex=CODEX!==null;
-  var defaultTab=(typeof DEFAULT_TAB!=='undefined')?DEFAULT_TAB:'all';
+  var defaultTab=DATA.defaultTab||'all';
   var selectedRange='this_month';
   var allDailyCostView='agent';
 
@@ -553,8 +554,8 @@ function main(){
     {id:'claude',label:'Claude',icon:'claude.webp'},
     {id:'codex',label:'Codex',icon:'codex.webp'}
   ].forEach(function(t){
-    var meta=(typeof APP_META!=='undefined'&&APP_META)?APP_META:{};
-    var iconBase=meta.assetBase?toFileUrl(meta.assetBase):'';
+    var tabMeta=(typeof DATA!=='undefined'&&DATA&&DATA.appMeta)?DATA.appMeta:{};
+    var iconBase=tabMeta.assetBase?toFileUrl(tabMeta.assetBase):'';
     var children=[];
     if(t.icon&&iconBase)children.push(el('img',{class:'tab-icon',src:iconBase+'/'+t.icon,alt:t.label+' logo'}));
     children.push(el('span',null,t.label));
@@ -601,5 +602,5 @@ function main(){
 }
 
 renderFooter();
-if(CLAUDE!==null||CODEX!==null){main();}
+if(DATA.claude!==null||DATA.codex!==null){main();}
 else{document.querySelector('.container').insertAdjacentElement('afterbegin',el('div',{class:'no-data'},'No data. Run code-usage to generate.'));}
