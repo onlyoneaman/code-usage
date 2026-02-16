@@ -1,10 +1,43 @@
 # code-usage
 
-`code-usage` is a local CLI that compares usage and estimated API-equivalent cost across coding agents, currently:
-- Claude Code
-- Codex CLI
+See how much your AI coding actually costs.
 
-It reads your local session data, builds a single HTML dashboard, and opens it in your browser.
+`code-usage` is a local CLI that analyzes and compares usage across AI coding agents:
+
+- **Claude Code**
+- **Codex CLI**
+
+It builds a single, clean HTML dashboard showing:
+
+- Token usage
+- Sessions & messages
+- Daily & weekly trends
+- Per-model cost estimates
+- Streaks
+- Combined + per-agent views
+
+Everything runs locally. No APIs. No tracking. No uploads.
+
+If you use multiple AI coding tools, this answers one question:
+
+**Where is my time and money actually going?**
+
+![code-usage dashboard](screenshot.png)
+
+## Why This Exists
+
+When you experiment with multiple coding agents, it's hard to know:
+
+- Which one you use more
+- Which models cost the most
+- Whether you're burning tokens unintentionally
+- How usage trends week over week
+
+`code-usage` gives you clarity in seconds.
+
+Think of it as:
+
+> GitHub contributions graph — but for AI coding.
 
 ## Install
 
@@ -18,61 +51,64 @@ npm install -g code-usage
 code-usage
 ```
 
-If the browser does not open automatically, the CLI prints a local file URL to open manually.
+Opens a local dashboard in your browser.
 
-## What You Get
+If it doesn't auto-open, the CLI prints the local file path.
+
+## What You See
 
 - Combined **All / Claude / Codex** views
-- Daily and weekly usage trends
+- Daily + weekly usage charts
 - Per-model cost breakdown
-- Sessions, messages, output tokens, streaks
-- Local JSON snapshots for inspection/debugging
+- Sessions, messages, output tokens
+- Usage streak tracking
+- Local JSON snapshots for debugging
 
-## Data Sources
+Generated files:
 
-`code-usage` only reads local files from standard tool directories:
-
-- Claude Code:
-  - `~/.claude/stats-cache.json`
-  - `~/.claude/usage-data/session-meta/*.json`
-  - `~/.claude/projects/**/*.jsonl` (for active/recent sessions)
-- Codex CLI:
-  - `~/.codex/sessions/**/*.jsonl`
-  - `~/.codex/archived_sessions/**/*.jsonl`
-
-## Output Files
-
-Generated artifacts are stored at:
-
-- `~/.code-usage/current/code-usage-dashboard.html`
-- `~/.code-usage/current/claude.json` (when Claude data exists)
-- `~/.code-usage/current/codex.json` (when Codex data exists)
+```
+~/.code-usage/current/code-usage-dashboard.html
+~/.code-usage/current/claude.json
+~/.code-usage/current/codex.json
+```
 
 ## Privacy
 
-- Processing is local on your machine.
-- This package does not require your `.env` for normal usage.
+All processing is local.
 
-## Cost Estimate Notes
+`code-usage` only reads standard local session files:
 
-Costs are estimated using model pricing tables in:
+Claude:
+
+```
+~/.claude/stats-cache.json
+~/.claude/usage-data/session-meta/*.json
+~/.claude/projects/**/*.jsonl
+```
+
+Codex:
+
+```
+~/.codex/sessions/**/*.jsonl
+~/.codex/archived_sessions/**/*.jsonl
+```
+
+No `.env` required.
+No data leaves your machine.
+
+## Cost Estimates
+
+Costs are API-equivalent estimates based on pricing tables:
 
 - `src/pricing/claude.js`
 - `src/pricing/codex.js`
 
-These are API-equivalent estimates. If you are on subscription plans (for example, Claude Max or Codex Pro), your billed cost may differ.
+If you're on subscription plans (Claude Max, Codex Pro), billed cost may differ.
 
 ## Requirements
 
 - Node.js `>=18`
 - Local Claude and/or Codex session files available
-
-## Troubleshooting
-
-- `No usage data for Claude or Codex found`
-  - Use Claude Code and/or Codex CLI first, then rerun.
-- Dashboard didn’t open
-  - Open this URL manually: `file:///Users/aman/.code-usage/current/code-usage-dashboard.html`
 
 ## Development
 
@@ -84,8 +120,6 @@ node bin/code-usage.js
 
 ## Links
 
-- Claude Code docs: https://code.claude.com/docs/en/overview
-- Codex CLI docs: https://developers.openai.com/codex/cli/
 - npm: https://www.npmjs.com/package/code-usage
 - GitHub: https://github.com/onlyoneaman/code-usage
 - Author: https://x.com/onlyoneaman
