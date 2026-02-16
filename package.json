@@ -1,6 +1,6 @@
 {
   "name": "code-usage",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Unified usage dashboard for AI coding tools (Claude Code, Codex CLI)",
   "type": "module",
   "bin": {
@@ -8,13 +8,16 @@
   },
   "scripts": {
     "start": "node bin/code-usage.js",
+    "build:dashboard": "node scripts/build-dashboard.mjs",
+    "build:prod": "npm run build:dashboard && npm run pack:check",
     "pack:check": "npm pack --dry-run --cache ./.npm-cache",
-    "publish": "npm publish --access public --cache ./.npm-cache --ignore-scripts"
+    "publish": "npm run build:prod && npm publish --access public --cache ./.npm-cache --ignore-scripts"
   },
   "files": [
     "bin",
     "src",
-    "templates"
+    "templates/dashboard.html",
+    "templates/assets"
   ],
   "author": "Aman (https://x.com/onlyoneaman)",
   "license": "MIT",
@@ -38,5 +41,9 @@
   },
   "dependencies": {
     "open": "^10.0.0"
+  },
+  "devDependencies": {
+    "clean-css": "^5.3.3",
+    "terser": "^5.46.0"
   }
 }

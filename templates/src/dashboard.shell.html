@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Usage Dashboard</title>
+<style>
+/* INLINE_STYLES */
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-inner">
+    <div class="header-top">
+      <div>
+        <h1>Code Usage Dashboard</h1>
+        <div class="sub">Estimated API-equivalent costs from local session data</div>
+      </div>
+      <div class="gen-time" id="gen-time"></div>
+    </div>
+    <div class="header-controls">
+      <div class="tab-bar" id="tab-bar"></div>
+      <div class="range-control">
+        <label class="range-label" for="range-select">Range</label>
+        <select class="range-select" id="range-select"></select>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="container">
+  <div id="panel-all" class="tab-panel"></div>
+  <div id="panel-claude" class="tab-panel"></div>
+  <div id="panel-codex" class="tab-panel"></div>
+  <div class="footer">
+    <p>Run <code>code-usage</code> to generate a fresh report.</p>
+    <p id="footer-meta"></p>
+  </div>
+</div>
+<script>
+// INLINE_SCRIPT
+</script>
+</body>
+</html>
