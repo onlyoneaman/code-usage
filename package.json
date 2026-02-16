@@ -1,7 +1,7 @@
 {
   "name": "code-usage",
-  "version": "0.1.6",
-  "description": "Compare Claude Code and Codex CLI usage. See tokens, sessions, streaks, and API-equivalent cost — all locally in one dashboard.",
+  "version": "0.1.7",
+  "description": "Unified usage dashboard for AI coding tools (Claude Code, Codex CLI)",
   "type": "module",
   "bin": {
     "code-usage": "bin/code-usage.js"

@@ -12,19 +12,24 @@ const outputPath = join(outputDir, 'code-usage-dashboard.html');
 export async function buildAndOpen({ claudeData, codexData, defaultTab, appMeta }) {
   mkdirSync(outputDir, { recursive: true });
 
-  // Write clean JSON snapshots for debugging / inspection
-  if (claudeData) writeFileSync(join(outputDir, 'claude.json'), JSON.stringify(claudeData, null, 2));
-  if (codexData) writeFileSync(join(outputDir, 'codex.json'), JSON.stringify(codexData, null, 2));
+  const data = {
+    metadata: {
+      createdAt: new Date().toISOString(),
+      version: appMeta?.version || null,
+    },
+    claude: claudeData || null,
+    codex: codexData || null,
+    defaultTab,
+    appMeta: appMeta || null,
+  };
+
+  // Write single JSON snapshot for debugging / inspection
+  writeFileSync(join(outputDir, 'openusage-data.json'), JSON.stringify(data, null, 2));
 
   const template = readFileSync(templatePath, 'utf8');
   const genTime = new Date().toLocaleString('en-US');
 
-  const dataJs = [
-    `var CLAUDE = ${claudeData ? JSON.stringify(claudeData) : 'null'};`,
-    `var CODEX = ${codexData ? JSON.stringify(codexData) : 'null'};`,
-    `var DEFAULT_TAB = "${defaultTab}";`,
-    `var APP_META = ${JSON.stringify(appMeta || null)};`,
-  ].join('\n');
+  const dataJs = `var DATA = ${JSON.stringify(data)};`;
 
   const html = template
     .replace('// DATA_PLACEHOLDER', dataJs)
