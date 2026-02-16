@@ -1,16 +1,27 @@
 # AGENTS.md
 
 ## Purpose
-This repository is used to track, compare, and analyze usage across coding agents.
+This repository tracks, compares, and visualizes usage across coding agents from local machine data.
 
-For now, the active agents are:
+Current agents:
 - `claude-code`
 - `codex`
 
 ## What This Repo Covers
-- Collect usage data per agent.
-- Normalize usage and pricing metrics.
-- Generate a shared dashboard for comparison.
+- Collect usage/session data from each agent's local files.
+- Normalize token and pricing data with shared output format.
+- Build a single dashboard with `All`, `Claude`, and `Codex` views.
+- Publish a CLI package (`code-usage`) to npm.
 
-## Expansion
-Additional agents can be added later using the same collector/pricing pattern.
+## Package And Release
+- npm package: `https://www.npmjs.com/package/code-usage`
+- repository: `https://github.com/onlyoneaman/code-usage`
+- publish command: `npm run publish`
+
+## Agent Docs
+- Claude Code: `https://code.claude.com/docs/en/overview`
+- Codex CLI: `https://developers.openai.com/codex/cli/`
+
+## Conventions
+- Keep processing local-first; do not depend on private `.env` secrets.
+- Add new agents using the same collector + pricing module pattern.

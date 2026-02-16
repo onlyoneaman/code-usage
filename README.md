@@ -52,7 +52,6 @@ Generated artifacts are stored at:
 
 - Processing is local on your machine.
 - This package does not require your `.env` for normal usage.
-- Do not commit secrets; keep `.env*` ignored.
 
 ## Cost Estimate Notes
 
@@ -73,7 +72,7 @@ These are API-equivalent estimates. If you are on subscription plans (for exampl
 - `No usage data for Claude or Codex found`
   - Use Claude Code and/or Codex CLI first, then rerun.
 - Dashboard didn’t open
-  - Open the printed `file://.../code-usage-dashboard.html` path manually.
+  - Open this URL manually: `file:///Users/aman/.code-usage/current/code-usage-dashboard.html`
 
 ## Development
 
@@ -85,6 +84,8 @@ node bin/code-usage.js
 
 ## Links
 
+- Claude Code docs: https://code.claude.com/docs/en/overview
+- Codex CLI docs: https://developers.openai.com/codex/cli/
 - npm: https://www.npmjs.com/package/code-usage
 - GitHub: https://github.com/onlyoneaman/code-usage
 - Author: https://x.com/onlyoneaman

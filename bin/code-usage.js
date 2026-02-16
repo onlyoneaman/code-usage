@@ -42,8 +42,8 @@ if (existsSync(codexSessionsDir)) {
 
 if (!hasClaude && !hasCodex) {
   console.log('No usage data for Claude or Codex found.\n');
-  console.log('  Claude Code: https://docs.anthropic.com/en/docs/claude-code');
-  console.log('  Codex CLI:   https://github.com/openai/codex\n');
+  console.log('  Claude Code: https://code.claude.com/docs/en/overview');
+  console.log('  Codex CLI:   https://developers.openai.com/codex/cli/\n');
   console.log('Install and use either tool, then run `code-usage` again.');
   process.exit(0);
 }
