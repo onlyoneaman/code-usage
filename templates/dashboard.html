@@ -13,12 +13,17 @@
   .header .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
   .header .gen-time { font-size: 11px; color: #94a3b8; text-align: right; }
   .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
-  .tab-bar { display: flex; gap: 4px; margin: 0 auto 0; background: #e2e8f0; border-radius: 10px 10px 0 0; padding: 4px 4px 0; width: fit-content; }
+  .header-controls { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+  .tab-bar { display: flex; gap: 4px; margin: 0; background: #e2e8f0; border-radius: 10px 10px 0 0; padding: 4px 4px 0; width: fit-content; }
   .tab-btn { padding: 8px 20px 10px; border-radius: 8px 8px 0 0; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; }
   .tab-btn:hover { color: #334155; }
   .tab-btn.active[data-tab="all"] { background: #f8fafc; color: #3b82f6; box-shadow: none; border-bottom: 2px solid #3b82f6; }
   .tab-btn.active[data-tab="claude"] { background: #f8fafc; color: #D37356; box-shadow: none; border-bottom: 2px solid #D37356; }
   .tab-btn.active[data-tab="codex"] { background: #f8fafc; color: #7385FE; box-shadow: none; border-bottom: 2px solid #7385FE; }
+  .range-bar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 6px; }
+  .range-btn { padding: 6px 10px; border-radius: 999px; border: 1px solid #cbd5e1; background: #fff; font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; }
+  .range-btn:hover { color: #334155; border-color: #94a3b8; }
+  .range-btn.active { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
@@ -86,6 +91,10 @@
   .sub-badge.claude { background: #f9e8e3; color: #a8533a; }
   .sub-badge.codex { background: #e3e8fe; color: #4a5fc7; }
   @media (max-width: 768px) {
+    .header-controls { flex-direction: column; align-items: stretch; }
+    .tab-bar { width: 100%; justify-content: space-between; }
+    .tab-btn { flex: 1; text-align: center; padding: 8px 8px 10px; }
+    .range-bar { justify-content: flex-start; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .container { padding: 16px; }
   }
@@ -100,7 +109,10 @@
     </div>
     <div class="gen-time" id="gen-time"></div>
   </div>
-  <div class="tab-bar" id="tab-bar"></div>
+  <div class="header-controls">
+    <div class="tab-bar" id="tab-bar"></div>
+    <div class="range-bar" id="range-bar"></div>
+  </div>
 </div>
 <div class="container">
   <div id="panel-all" class="tab-panel"></div>
@@ -171,6 +183,7 @@ function createModelTag(id){
 
 function getWeekStart(ds){var d=new Date(ds+'T12:00:00');var day=d.getDay();var diff=day===0?6:day-1;d.setDate(d.getDate()-diff);return localDateStr(d);}
 function weekLabel(monStr){var mon=new Date(monStr+'T12:00:00');var sun=new Date(mon);sun.setDate(sun.getDate()+6);if(mon.getMonth()===sun.getMonth())return MONTHS[mon.getMonth()]+' '+mon.getDate()+'-'+sun.getDate();return MONTHS[mon.getMonth()]+' '+mon.getDate()+' - '+MONTHS[sun.getMonth()]+' '+sun.getDate();}
+function sumBy(list,key){return list.reduce(function(acc,item){return acc+(item[key]||0);},0);}
 
 /* ── Build view opts from pre-computed data ──────────────── */
 function buildOpts(data){
@@ -293,6 +306,93 @@ function mergeOpts(a,b){
 }
 
 function adjustAccent(o){var r=Object.assign({},o);r.accent='#3b82f6';return r;}
+
+var RANGE_OPTIONS=[
+  {id:'this_month',label:'This Month'},
+  {id:'this_year',label:'This Year'},
+  {id:'last_30_days',label:'Last 30 Days'},
+  {id:'last_90_days',label:'Last 90 Days'},
+  {id:'all_time',label:'All Time'}
+];
+
+function rangeStart(rangeId){
+  var now=new Date(),start=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  if(rangeId==='this_month'){start.setDate(1);return localDateStr(start);}
+  if(rangeId==='this_year'){start.setMonth(0,1);return localDateStr(start);}
+  if(rangeId==='last_30_days'){start.setDate(start.getDate()-29);return localDateStr(start);}
+  if(rangeId==='last_90_days'){start.setDate(start.getDate()-89);return localDateStr(start);}
+  return null;
+}
+
+function computeStreak(allDays){
+  var active={};allDays.forEach(function(d){if(d.sessions>0)active[d.date]=true;});
+  var streak=0,check=new Date();
+  while(active[localDateStr(check)]){streak++;check.setDate(check.getDate()-1);}
+  return streak;
+}
+
+function applyRange(opts,rangeId){
+  if(!opts)return opts;
+  if(rangeId==='all_time'){
+    var full=Object.assign({},opts);
+    full.rangeId=rangeId;
+    return full;
+  }
+
+  var start=rangeStart(rangeId);
+  var allDays=(opts.allDays||[]).filter(function(d){return d.date>=start;});
+  var dailyRows=(opts.dailyRows||[]).filter(function(r){return r.date>=start;});
+  var displayCost=sumBy(allDays,'cost');
+  var totalSessions=sumBy(allDays,'sessions');
+  var userMessages=sumBy(allDays,'messages');
+  var daysActive=allDays.filter(function(d){return d.sessions>0;}).length;
+  var firstActive=null;
+  for(var i=0;i<allDays.length;i++){if(allDays[i].sessions>0){firstActive=allDays[i].date+'T00:00:00.000Z';break;}}
+  var maxMsg=1;allDays.forEach(function(d){if(d.messages>maxMsg)maxMsg=d.messages;});
+
+  var weeklyMap={};
+  allDays.forEach(function(d){
+    var wk=getWeekStart(d.date);
+    if(!weeklyMap[wk])weeklyMap[wk]={cost:0,sessions:0,claudeCost:0,codexCost:0};
+    weeklyMap[wk].cost+=d.cost||0;
+    weeklyMap[wk].sessions+=d.sessions||0;
+    weeklyMap[wk].claudeCost+=d.claudeCost||0;
+    weeklyMap[wk].codexCost+=d.codexCost||0;
+  });
+  var weeklySorted=Object.keys(weeklyMap).sort();
+
+  var next=Object.assign({},opts,{
+    rangeId:rangeId,
+    allDays:allDays,
+    maxMsg:maxMsg,
+    dailyRows:dailyRows,
+    weeklyMap:weeklyMap,
+    weeklySorted:weeklySorted,
+    displayCost:displayCost,
+    totalSessions:totalSessions,
+    userMessages:userMessages,
+    daysActive:daysActive,
+    firstDate:firstActive,
+    costPerDay:daysActive>0?displayCost/daysActive:0,
+    costPerSession:totalSessions>0?displayCost/totalSessions:0,
+    streak:computeStreak(allDays),
+    modelUsage:null,
+    costCards:null
+  });
+
+  if(next.stacked){
+    var claudeSessions=sumBy(allDays,'claudeSess');
+    var codexSessions=sumBy(allDays,'codexSess');
+    var badgeEls=[];
+    function countBadge(label,count,cls){var wrap=el('span',{class:'date-info'});var bg=el('span',{class:'sub-badge '+cls});bg.textContent=label+' '+count;wrap.appendChild(bg);return wrap;}
+    badgeEls.push(countBadge('Claude',claudeSessions,'claude'));
+    badgeEls.push(countBadge('Codex',codexSessions,'codex'));
+    next.badgeEls=badgeEls;
+  }
+
+  next.pricingNote='Model-level cost breakdown is shown in the All Time range.';
+  return next;
+}
 
 /* ── Render functions ────────────────────────────────────── */
 var CLAUDE_COLOR='#D37356',CODEX_COLOR='#7385FE';
@@ -432,10 +532,11 @@ function renderNoData(panelEl,toolName,installUrl){
 function main(){
   var hasClaude=CLAUDE!==null,hasCodex=CODEX!==null;
   var defaultTab=(typeof DEFAULT_TAB!=='undefined')?DEFAULT_TAB:'all';
+  var selectedRange='this_month';
 
-  var claudeOpts=hasClaude?buildOpts(CLAUDE):null;
-  var codexOpts=hasCodex?buildOpts(CODEX):null;
-  var allOpts=mergeOpts(claudeOpts,codexOpts);
+  var claudeBase=hasClaude?buildOpts(CLAUDE):null;
+  var codexBase=hasCodex?buildOpts(CODEX):null;
+  var allBase=mergeOpts(claudeBase,codexBase);
 
   // Tabs
   var tabBar=document.getElementById('tab-bar');
@@ -443,12 +544,30 @@ function main(){
     var btn=el('button',{class:'tab-btn','data-tab':t.id},t.label);btn.addEventListener('click',function(){switchTab(t.id);});tabBar.appendChild(btn);
   });
 
-  // Render panels
-  renderPanel(document.getElementById('panel-all'),allOpts);
-  if(hasClaude)renderPanel(document.getElementById('panel-claude'),claudeOpts);else renderNoData(document.getElementById('panel-claude'),'Claude Code','https://docs.anthropic.com/en/docs/claude-code');
-  if(hasCodex)renderPanel(document.getElementById('panel-codex'),codexOpts);else renderNoData(document.getElementById('panel-codex'),'Codex CLI','https://github.com/openai/codex');
+  // Date range controls
+  var rangeBar=document.getElementById('range-bar');
+  RANGE_OPTIONS.forEach(function(r){
+    var btn=el('button',{class:'range-btn','data-range':r.id},r.label);
+    btn.addEventListener('click',function(){setRange(r.id);});
+    rangeBar.appendChild(btn);
+  });
+
+  function renderPanels(){
+    renderPanel(document.getElementById('panel-all'),applyRange(allBase,selectedRange));
+    if(hasClaude)renderPanel(document.getElementById('panel-claude'),applyRange(claudeBase,selectedRange));else renderNoData(document.getElementById('panel-claude'),'Claude Code','https://docs.anthropic.com/en/docs/claude-code');
+    if(hasCodex)renderPanel(document.getElementById('panel-codex'),applyRange(codexBase,selectedRange));else renderNoData(document.getElementById('panel-codex'),'Codex CLI','https://github.com/openai/codex');
+  }
+
+  function setRange(id){
+    selectedRange=id;
+    document.querySelectorAll('.range-btn').forEach(function(b){b.classList.remove('active');});
+    var activeBtn=document.querySelector('[data-range="'+id+'"]');
+    if(activeBtn)activeBtn.classList.add('active');
+    renderPanels();
+  }
 
   function switchTab(id){document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});document.querySelector('[data-tab="'+id+'"]').classList.add('active');document.getElementById('panel-'+id).classList.add('active');history.replaceState(null,'','#'+id);}
+  setRange(selectedRange);
   var hash=location.hash.replace('#','');if(['all','claude','codex'].indexOf(hash)!==-1)switchTab(hash);else switchTab(defaultTab);
 }
 
