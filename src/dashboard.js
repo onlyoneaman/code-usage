@@ -9,7 +9,7 @@ const templatePath = join(__dirname, '..', 'templates', 'dashboard.html');
 const outputDir = join(homedir(), '.code-usage', 'current');
 const outputPath = join(outputDir, 'code-usage-dashboard.html');
 
-export async function buildAndOpen({ claudeData, codexData, defaultTab, appMeta }) {
+export async function buildAndOpen({ claudeData, codexData, opencodeData, defaultTab, appMeta }) {
   mkdirSync(outputDir, { recursive: true });
 
   const data = {
@@ -19,6 +19,7 @@ export async function buildAndOpen({ claudeData, codexData, defaultTab, appMeta 
     },
     claude: claudeData || null,
     codex: codexData || null,
+    opencode: opencodeData || null,
     defaultTab,
     appMeta: appMeta || null,
   };

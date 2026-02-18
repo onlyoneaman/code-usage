@@ -107,7 +107,15 @@ export function collectCodex() {
   while (activeDates.has(localDateStr(check))) { streak++; check.setDate(check.getDate() - 1); }
 
   let totalOutputTokens = 0;
-  for (const a of Object.values(modelAgg)) totalOutputTokens += a.output;
+  let totalTokens = 0;
+  let totalInput = 0, totalCached = 0, totalReasoning = 0;
+  for (const a of Object.values(modelAgg)) {
+    totalInput += a.input;
+    totalOutputTokens += a.output;
+    totalCached += a.cached;
+    totalReasoning += a.reasoning;
+    totalTokens += a.input + a.output + a.cached + a.reasoning;
+  }
 
   // Build projects array
   const projects = Object.entries(projAgg).map(([path, p]) => {
@@ -128,6 +136,8 @@ export function collectCodex() {
       totalSessions,
       totalMessages,
       totalOutputTokens,
+      totalTokens,
+      tokenBreakdown: { input: totalInput, output: totalOutputTokens, cached: totalCached, reasoning: totalReasoning },
       firstDate: firstDate ? `${firstDate}T00:00:00.000Z` : null,
       streak,
     },

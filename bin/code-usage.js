@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { collectClaude } from '../src/collectors/claude.js';
 import { collectCodex } from '../src/collectors/codex.js';
+import { collectOpencode } from '../src/collectors/opencode.js';
 import { buildAndOpen } from '../src/dashboard.js';
 import { APP_CONFIG } from '../src/config.js';
 
@@ -41,11 +42,14 @@ if (existsSync(codexSessionsDir)) {
   hasCodex = findJsonl(codexSessionsDir);
 }
 
-if (!hasClaude && !hasCodex) {
-  console.log('No usage data for Claude or Codex found.\n');
+const hasOpencode = existsSync(join(home, '.local', 'share', 'opencode', 'opencode.db'));
+
+if (!hasClaude && !hasCodex && !hasOpencode) {
+  console.log('No usage data for Claude, Codex, or OpenCode found.\n');
   console.log('  Claude Code: https://code.claude.com/docs/en/overview');
-  console.log('  Codex CLI:   https://developers.openai.com/codex/cli/\n');
-  console.log('Install and use either tool, then run `code-usage` again.');
+  console.log('  Codex CLI:   https://developers.openai.com/codex/cli/');
+  console.log('  OpenCode:    https://opencode.ai\n');
+  console.log('Install and use any of these tools, then run `code-usage` again.');
   process.exit(0);
 }
 
@@ -63,12 +67,23 @@ if (hasCodex) {
   console.log(`${codexData.summary.totalSessions} sessions`);
 }
 
+let opencodeData = null;
+if (hasOpencode) {
+  process.stdout.write('Collecting OpenCode data... ');
+  opencodeData = collectOpencode();
+  console.log(`${opencodeData.summary.totalSessions} sessions`);
+}
+
 let defaultTab = 'all';
-if (!hasClaude) defaultTab = 'codex';
-else if (!hasCodex) defaultTab = 'claude';
+const providerCount = [hasClaude, hasCodex, hasOpencode].filter(Boolean).length;
+if (providerCount === 1) {
+  if (hasClaude) defaultTab = 'claude';
+  else if (hasCodex) defaultTab = 'codex';
+  else if (hasOpencode) defaultTab = 'opencode';
+}
 
 process.stdout.write('Building dashboard... ');
-await buildAndOpen({ claudeData, codexData, defaultTab, appMeta });
+await buildAndOpen({ claudeData, codexData, opencodeData, defaultTab, appMeta });
 console.log('done');
 
 const dashPath = join(home, '.code-usage', 'current', 'code-usage-dashboard.html');

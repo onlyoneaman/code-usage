@@ -1,7 +1,7 @@
 {
   "name": "code-usage",
   "version": "0.1.9",
-  "description": "Unified usage dashboard for AI coding tools (Claude Code, Codex CLI)",
+  "description": "Unified usage dashboard for AI coding tools (Claude Code, Codex CLI, OpenCode)",
   "type": "module",
   "bin": {
     "code-usage": "bin/code-usage.js"
@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node bin/code-usage.js",
     "build:dashboard": "node scripts/build-dashboard.mjs",
+    "sync:litellm": "node scripts/sync-litellm.mjs",
     "build:prod": "npm run build:dashboard && npm run pack:check",
     "pack:check": "npm pack --dry-run --cache ./.npm-cache",
     "publish": "npm run build:prod && npm publish --access public --cache ./.npm-cache --ignore-scripts"
@@ -29,6 +30,7 @@
   "keywords": [
     "claude",
     "codex",
+    "opencode",
     "usage",
     "dashboard",
     "ai",

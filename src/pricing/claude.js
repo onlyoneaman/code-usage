@@ -1,4 +1,6 @@
 // Claude model pricing — $/1M tokens
+import { litellmLookup } from './litellm.js';
+
 const CLAUDE_PRICING = {
   'claude-opus-4-6':            { input: 5,   output: 25, cacheRead: 0.50, cacheWrite: 6.25  },
   'claude-opus-4-5-20251101':   { input: 5,   output: 25, cacheRead: 0.50, cacheWrite: 6.25  },
@@ -24,6 +26,9 @@ export function getClaudePricing(modelId) {
     return { input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1.00 };
   if (id.includes('haiku'))
     return { input: 1, output: 5, cacheRead: 0.10, cacheWrite: 1.25 };
+  // LiteLLM fallback for unknown Claude models
+  const lm = litellmLookup(modelId, ['anthropic/']);
+  if (lm) return lm;
   return { input: 5, output: 25, cacheRead: 0.50, cacheWrite: 6.25 };
 }
 

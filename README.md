@@ -11,6 +11,7 @@ See how much your AI coding actually costs.
 
 - **Claude Code**
 - **Codex CLI**
+- **OpenCode**
 
 It builds a single, clean HTML dashboard showing:
 
@@ -62,7 +63,7 @@ If it doesn't auto-open, the CLI prints the local file path.
 
 ## What You See
 
-- Combined **All / Claude / Codex** views
+- Combined **All / Claude / Codex / OpenCode** views
 - Daily + weekly usage charts
 - Per-model cost breakdown
 - Per-project usage donut chart
@@ -98,6 +99,13 @@ Codex:
 ~/.codex/archived_sessions/**/*.jsonl
 ```
 
+OpenCode:
+
+```
+~/.local/share/opencode/opencode.db (SQLite)
+~/.cache/opencode/models.json (pricing)
+```
+
 No `.env` required.
 No data leaves your machine.
 
@@ -107,13 +115,16 @@ Costs are API-equivalent estimates based on pricing tables:
 
 - `src/pricing/claude.js`
 - `src/pricing/codex.js`
+- `src/pricing/opencode.js` (dynamic from `~/.cache/opencode/models.json`)
+
+Fallback pricing powered by [LiteLLM](https://github.com/BerriAI/litellm).
 
 If you're on subscription plans (Claude Max, Codex Pro), billed cost may differ.
 
 ## Requirements
 
 - Node.js `>=18`
-- Local Claude and/or Codex session files available
+- Local Claude, Codex, and/or OpenCode session files available
 
 ## Development
 

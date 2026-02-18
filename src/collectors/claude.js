@@ -191,9 +191,17 @@ export function collectClaude() {
   const check = new Date(now);
   while (activeDates.has(localDateStr(check))) { streak++; check.setDate(check.getDate() - 1); }
 
-  // --- Output tokens total ---
+  // --- Token totals ---
   let totalOutputTokens = 0;
-  for (const u of Object.values(mu)) totalOutputTokens += u.outputTokens || 0;
+  let totalTokens = 0;
+  let totalInputTokens = 0, totalCacheRead = 0, totalCacheWrite = 0;
+  for (const u of Object.values(mu)) {
+    totalInputTokens += u.inputTokens || 0;
+    totalOutputTokens += u.outputTokens || 0;
+    totalCacheRead += u.cacheReadInputTokens || 0;
+    totalCacheWrite += u.cacheCreationInputTokens || 0;
+    totalTokens += (u.inputTokens || 0) + (u.outputTokens || 0) + (u.cacheReadInputTokens || 0) + (u.cacheCreationInputTokens || 0);
+  }
 
   const totalSessions = (stats.totalSessions || 0) + recentTotalSessions;
 
@@ -219,6 +227,8 @@ export function collectClaude() {
       totalSessions: totalSessions,
       totalMessages: userMessages || stats.totalMessages || 0,
       totalOutputTokens,
+      totalTokens,
+      tokenBreakdown: { input: totalInputTokens, output: totalOutputTokens, cacheRead: totalCacheRead, cacheWrite: totalCacheWrite },
       firstDate: stats.firstSessionDate || null,
       streak,
     },
