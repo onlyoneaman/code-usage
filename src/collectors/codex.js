@@ -21,13 +21,14 @@ export function collectCodex() {
   let totalSessions = 0;
   let totalMessages = 0;
   let firstDate = null;
+  const projAgg = {}; // path → { name, daily: { date → {sessions, messages, cost} } }
 
   for (const fpath of files) {
     const session = parseSession(fpath);
     if (!session) continue;         // no date → skip
     if (!session.hasUsage) continue; // no token data → skip entirely
 
-    const { date, model, input, output, cached, reasoning, messages } = session;
+    const { date, model, input, output, cached, reasoning, messages, cwd } = session;
     totalSessions++;
     totalMessages += messages;
     if (!firstDate || date < firstDate) firstDate = date;
@@ -53,6 +54,16 @@ export function collectCodex() {
     dayAgg[date].messages += messages;
     dayAgg[date].models.add(model);
     dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
+
+    // Project aggregation
+    if (cwd) {
+      const projName = cwd.split('/').filter(Boolean).pop() || cwd;
+      if (!projAgg[cwd]) projAgg[cwd] = { name: projName, daily: {} };
+      if (!projAgg[cwd].daily[date]) projAgg[cwd].daily[date] = { sessions: 0, messages: 0, cost: 0 };
+      projAgg[cwd].daily[date].sessions++;
+      projAgg[cwd].daily[date].messages += messages;
+      projAgg[cwd].daily[date].cost += cost;
+    }
   }
 
   // --- Build output ---
@@ -98,6 +109,15 @@ export function collectCodex() {
   let totalOutputTokens = 0;
   for (const a of Object.values(modelAgg)) totalOutputTokens += a.output;
 
+  // Build projects array
+  const projects = Object.entries(projAgg).map(([path, p]) => {
+    const daily = Object.entries(p.daily).sort(([a],[b]) => a.localeCompare(b)).map(([date, d]) => ({ date, sessions: d.sessions, messages: d.messages, cost: d.cost }));
+    const sessions = daily.reduce((s, d) => s + d.sessions, 0);
+    const messages = daily.reduce((s, d) => s + d.messages, 0);
+    const cost = daily.reduce((s, d) => s + d.cost, 0);
+    return { name: p.name, path, sessions, messages, cost, daily };
+  }).sort((a, b) => b.cost - a.cost);
+
   return {
     provider: 'codex',
     badge: 'Codex Pro',
@@ -113,6 +133,7 @@ export function collectCodex() {
     },
     models,
     daily: dailyArr,
+    projects,
     extra: null,
   };
 }
@@ -121,7 +142,7 @@ function parseSession(fpath) {
   let lines;
   try { lines = readFileSync(fpath, 'utf8').split('\n'); } catch { return null; }
 
-  let date = null, model = null, messages = 0, hasUsage = false;
+  let date = null, model = null, messages = 0, hasUsage = false, cwd = null;
   let input = 0, output = 0, cached = 0, reasoning = 0;
 
   for (const line of lines) {
@@ -136,6 +157,7 @@ function parseSession(fpath) {
       const ts = payload.timestamp || entry.timestamp || '';
       if (ts) date = ts.slice(0, 10);
       model = payload.model || payload.collaboration_mode?.settings?.model || null;
+      if (payload.cwd) cwd = payload.cwd;
     }
 
     if (type === 'event_msg' && payload && typeof payload === 'object') {
@@ -165,7 +187,7 @@ function parseSession(fpath) {
   if (!date) return null;
   if (!model) model = 'gpt-5.3-codex';
 
-  return { date, model, input, output, cached, reasoning, messages, hasUsage };
+  return { date, model, input, output, cached, reasoning, messages, hasUsage, cwd };
 }
 
 function localDateStr(d) {

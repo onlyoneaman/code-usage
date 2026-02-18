@@ -128,6 +128,7 @@ function buildOpts(data){
 
   var rawModels=data.models.map(function(m){return{id:m.id,cost:m.cost,provider:data.provider};});
   var modelUsage=rawModels.slice().sort(function(a,b){return b.cost-a.cost;});
+  var projects=(data.projects||[]).map(function(p){return{name:p.name,path:p.path,sessions:p.sessions,messages:p.messages,cost:p.cost,daily:p.daily,provider:data.provider};});
 
   return{
     accent:accent,displayCost:s.totalCost,daysActive:daysActive,totalSessions:s.totalSessions,
@@ -136,7 +137,8 @@ function buildOpts(data){
     allDays:allDays,maxMsg:maxMsg,rawModels:rawModels,
     modelUsage:modelUsage,showProviderBadge:false,
     weeklySorted:weeklySorted,weeklyMap:weeklyMap,
-    dailyRows:dailyRows,extraCards:extraCards,badgeEls:badgeEls,pricingNote:data.pricingNote
+    dailyRows:dailyRows,extraCards:extraCards,badgeEls:badgeEls,pricingNote:data.pricingNote,
+    projects:projects
   };
 }
 
@@ -216,6 +218,27 @@ function mergeOpts(a,b){
   var allModels=[].concat(a.rawModels||[]).concat(b.rawModels||[]);
   allModels.sort(function(x,y){return y.cost-x.cost;});
 
+  // Merge projects by name
+  var projMap={};
+  function addProjects(projs,provider){
+    (projs||[]).forEach(function(p){
+      if(!projMap[p.name])projMap[p.name]={name:p.name,path:p.path,sessions:0,messages:0,cost:0,claudeCost:0,codexCost:0,daily:{}};
+      projMap[p.name].sessions+=p.sessions;projMap[p.name].messages+=p.messages;projMap[p.name].cost+=p.cost;
+      if(provider==='claude')projMap[p.name].claudeCost+=p.cost;else projMap[p.name].codexCost+=p.cost;
+      (p.daily||[]).forEach(function(d){
+        if(!projMap[p.name].daily[d.date])projMap[p.name].daily[d.date]={sessions:0,messages:0,cost:0,claudeCost:0,codexCost:0};
+        projMap[p.name].daily[d.date].sessions+=d.sessions;projMap[p.name].daily[d.date].messages+=d.messages;projMap[p.name].daily[d.date].cost+=d.cost;
+        if(provider==='claude')projMap[p.name].daily[d.date].claudeCost+=d.cost;else projMap[p.name].daily[d.date].codexCost+=d.cost;
+      });
+    });
+  }
+  addProjects(a.projects,'claude');addProjects(b.projects,'codex');
+  var mergedProjects=Object.keys(projMap).map(function(k){
+    var p=projMap[k];
+    p.daily=Object.keys(p.daily).sort().map(function(date){var d=p.daily[date];return{date:date,sessions:d.sessions,messages:d.messages,cost:d.cost,claudeCost:d.claudeCost,codexCost:d.codexCost};});
+    return p;
+  }).sort(function(x,y){return y.cost-x.cost;});
+
   return{
     accent:'#3b82f6',displayCost:displayCost,daysActive:daysActive,totalSessions:totalSess,
     costPerDay:daysActive>0?displayCost/daysActive:0,costPerSession:totalSess>0?displayCost/totalSess:0,
@@ -225,7 +248,8 @@ function mergeOpts(a,b){
     showProviderBadge:true,
     weeklySorted:weeklySorted,weeklyMap:weeklyMap,dailyRows:dailyRows,
     extraCards:[],badgeEls:badgeEls,
-    pricingNote:'Combined view across Claude and Codex. Models are sorted by estimated cost usage.'
+    pricingNote:'Combined view across Claude and Codex. Models are sorted by estimated cost usage.',
+    projects:mergedProjects
   };
 }
 
@@ -267,6 +291,7 @@ function applyRange(opts,rangeId){
   if(rangeId==='all_time'){
     var full=Object.assign({},opts);
     full.rangeId=rangeId;
+    full.projects=opts.projects||[];
     return full;
   }
 
@@ -333,6 +358,17 @@ function applyRange(opts,rangeId){
     next.badgeEls=badgeEls;
   }
 
+  // Filter projects by range
+  var rangeProjects=(opts.projects||[]).map(function(p){
+    var fd=(p.daily||[]).filter(function(d){return d.date>=start;});
+    if(fd.length===0)return null;
+    var rp={name:p.name,path:p.path,daily:fd,provider:p.provider,
+      sessions:sumBy(fd,'sessions'),messages:sumBy(fd,'messages'),cost:sumBy(fd,'cost')};
+    if(p.claudeCost!==undefined){rp.claudeCost=sumBy(fd,'claudeCost');rp.codexCost=sumBy(fd,'codexCost');}
+    return rp;
+  }).filter(function(p){return p&&p.sessions>0;}).sort(function(x,y){return y.cost-x.cost;});
+  next.projects=rangeProjects;
+
   next.pricingNote='Models are sorted by estimated cost usage for this selected range.';
   return next;
 }
@@ -385,6 +421,75 @@ function renderWeeklyChart(container,weeklySorted,weeklyMap,accent,stacked){
   });
 }
 
+var PROJ_COLORS=['#D37356','#7385FE','#047857','#e4a222','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+function renderProjects(container,projects,accent,stacked){
+  if(!projects||!projects.length)return;
+  var sec=el('div',{class:'section'});sec.appendChild(el('h2',null,'Projects'));
+  var wrap=el('div',{class:'proj-wrap'});
+
+  // Build donut data: top 5 + "Other"
+  var SHOW_LIMIT=5;
+  var totalCost=0;projects.forEach(function(p){totalCost+=p.cost;});
+  var slices=[];var otherCost=0,otherSess=0;
+  projects.forEach(function(p,i){
+    if(i<SHOW_LIMIT)slices.push({name:p.name,cost:p.cost,sessions:p.sessions,color:PROJ_COLORS[i%PROJ_COLORS.length]});
+    else{otherCost+=p.cost;otherSess+=p.sessions;}
+  });
+  if(otherCost>0)slices.push({name:'Other ('+(projects.length-SHOW_LIMIT)+')',cost:otherCost,sessions:otherSess,color:'#cbd5e1'});
+
+  // Build conic-gradient
+  var gradParts=[],cumPct=0;
+  slices.forEach(function(s){
+    var pct=totalCost>0?(s.cost/totalCost)*100:0;
+    gradParts.push(s.color+' '+cumPct.toFixed(2)+'% '+(cumPct+pct).toFixed(2)+'%');
+    cumPct+=pct;
+  });
+  var donutOuter=el('div',{class:'proj-donut',style:'background:conic-gradient('+gradParts.join(',')+');'});
+  donutOuter.appendChild(el('div',{class:'proj-donut-hole'}));
+  wrap.appendChild(donutOuter);
+
+  // Legend list
+  var legend=el('div',{class:'proj-legend'});
+  slices.forEach(function(s){
+    var row=el('div',{class:'proj-legend-row'});
+    row.appendChild(el('span',{class:'proj-swatch',style:'background:'+s.color}));
+    row.appendChild(el('span',{class:'proj-legend-name'},s.name));
+    var meta=el('span',{class:'proj-legend-meta'});
+    meta.appendChild(el('span',{class:'proj-cost'},fmtUSD(s.cost)));
+    meta.appendChild(el('span',{class:'proj-sessions'},s.sessions+' sess'));
+    row.appendChild(meta);
+    legend.appendChild(row);
+  });
+
+  // Show more: full list below
+  if(projects.length>SHOW_LIMIT){
+    var moreWrap=el('div',{class:'proj-more-list'});
+    projects.slice(SHOW_LIMIT).forEach(function(p,i){
+      var row=el('div',{class:'proj-more-row'});
+      row.appendChild(el('span',{class:'proj-swatch',style:'background:#cbd5e1'}));
+      row.appendChild(el('span',{class:'proj-legend-name'},p.name));
+      var meta=el('span',{class:'proj-legend-meta'});
+      meta.appendChild(el('span',{class:'proj-cost'},fmtUSD(p.cost)));
+      meta.appendChild(el('span',{class:'proj-sessions'},p.sessions+' sess'));
+      row.appendChild(meta);
+      moreWrap.appendChild(row);
+    });
+    moreWrap.style.display='none';
+    var toggle=el('button',{class:'proj-toggle',type:'button'},'Show '+(projects.length-SHOW_LIMIT)+' more');
+    var expanded=false;
+    toggle.addEventListener('click',function(){
+      expanded=!expanded;
+      moreWrap.style.display=expanded?'block':'none';
+      toggle.textContent=expanded?'Show less':'Show '+(projects.length-SHOW_LIMIT)+' more';
+    });
+    legend.appendChild(toggle);
+    legend.appendChild(moreWrap);
+  }
+
+  wrap.appendChild(legend);
+  sec.appendChild(wrap);container.appendChild(sec);
+}
+
 function renderPanel(panelEl,opts){
   var accent=opts.accent;
   panelEl.textContent='';panelEl.style.setProperty('--accent',accent);
@@ -419,6 +524,9 @@ function renderPanel(panelEl,opts){
 
   // Weekly chart
   if(opts.weeklySorted&&opts.weeklySorted.length>0){var sec3=el('div',{class:'section'});sec3.appendChild(el('h2',null,'Weekly Usage'));var cc3=el('div',{class:'chart-container'});if(opts.stacked){cc3.appendChild(makeLegend());}var wc=el('div',{class:'weekly-chart'});renderWeeklyChart(wc,opts.weeklySorted,opts.weeklyMap,accent,opts.stacked);cc3.appendChild(wc);sec3.appendChild(cc3);panelEl.appendChild(sec3);}
+
+  // Projects
+  if(opts.projects&&opts.projects.length>0)renderProjects(panelEl,opts.projects,accent,opts.stacked);
 
   // Model usage
   if(opts.modelUsage&&opts.modelUsage.length>0){

@@ -76,6 +76,9 @@ export function collectClaude() {
   let linesAdded = 0, linesRemoved = 0, filesModified = 0, userMessages = 0;
   const recentByDate = {}; // date → {sessions, messages, outputTokens, models}
   let recentTotalSessions = 0;
+  // Per-project per-day aggregation
+  const projAgg = {}; // path → { name, sessions, messages, outputTokens, daily: { date → {sessions, messages, outputTokens} } }
+  let globalOutputTokens = 0;
 
   if (existsSync(sessionMetaDir)) {
     for (const file of readdirSync(sessionMetaDir)) {
@@ -87,14 +90,30 @@ export function collectClaude() {
         filesModified += s.files_modified || 0;
         userMessages += s.user_message_count || 0;
 
-        // Check if this session is beyond the cached data
+        // Project aggregation
+        const projPath = s.project_path || '';
         const startDate = (s.start_time || '').slice(0, 10);
+        const outTok = s.output_tokens || 0;
+        globalOutputTokens += outTok;
+        if (projPath && startDate) {
+          const projName = projPath.split('/').filter(Boolean).pop() || projPath;
+          if (!projAgg[projPath]) projAgg[projPath] = { name: projName, sessions: 0, messages: 0, outputTokens: 0, daily: {} };
+          projAgg[projPath].sessions++;
+          projAgg[projPath].messages += s.user_message_count || 0;
+          projAgg[projPath].outputTokens += outTok;
+          if (!projAgg[projPath].daily[startDate]) projAgg[projPath].daily[startDate] = { sessions: 0, messages: 0, outputTokens: 0 };
+          projAgg[projPath].daily[startDate].sessions++;
+          projAgg[projPath].daily[startDate].messages += s.user_message_count || 0;
+          projAgg[projPath].daily[startDate].outputTokens += outTok;
+        }
+
+        // Check if this session is beyond the cached data
         if (startDate > lastDate) {
           recentTotalSessions++;
           if (!recentByDate[startDate]) recentByDate[startDate] = { sessions: 0, messages: 0, outputTokens: 0, models: new Set() };
           recentByDate[startDate].sessions++;
           recentByDate[startDate].messages += s.user_message_count || 0;
-          recentByDate[startDate].outputTokens += s.output_tokens || 0;
+          recentByDate[startDate].outputTokens += outTok;
           if (s.model) recentByDate[startDate].models.add(s.model);
         }
       } catch { /* skip */ }
@@ -178,6 +197,18 @@ export function collectClaude() {
 
   const totalSessions = (stats.totalSessions || 0) + recentTotalSessions;
 
+  // Build projects array with cost distributed proportionally by outputTokens
+  const projects = Object.entries(projAgg).map(([path, p]) => {
+    const daily = Object.entries(p.daily).sort(([a],[b]) => a.localeCompare(b)).map(([date, d]) => {
+      const dayCost = globalOutputTokens > 0 ? totalCost * (d.outputTokens / globalOutputTokens) : 0;
+      return { date, sessions: d.sessions, messages: d.messages, cost: dayCost };
+    });
+    const sessions = daily.reduce((s, d) => s + d.sessions, 0);
+    const messages = daily.reduce((s, d) => s + d.messages, 0);
+    const cost = daily.reduce((s, d) => s + d.cost, 0);
+    return { name: p.name, path, sessions, messages, cost, daily };
+  }).sort((a, b) => b.cost - a.cost);
+
   return {
     provider: 'claude',
     badge: 'Claude Max',
@@ -193,6 +224,7 @@ export function collectClaude() {
     },
     models,
     daily: dailyArr,
+    projects,
     extra: { linesAdded, linesRemoved, filesModified },
   };
 }
