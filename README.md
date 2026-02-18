@@ -1,5 +1,10 @@
 # code-usage
 
+[![npm version](https://img.shields.io/npm/v/code-usage)](https://www.npmjs.com/package/code-usage)
+[![npm downloads](https://img.shields.io/npm/dm/code-usage)](https://www.npmjs.com/package/code-usage)
+[![license](https://img.shields.io/npm/l/code-usage)](https://github.com/onlyoneaman/code-usage/blob/main/LICENSE)
+[![node](https://img.shields.io/node/v/code-usage)](https://nodejs.org)
+
 See how much your AI coding actually costs.
 
 `code-usage` is a local CLI that analyzes and compares usage across AI coding agents:
@@ -60,6 +65,7 @@ If it doesn't auto-open, the CLI prints the local file path.
 - Combined **All / Claude / Codex** views
 - Daily + weekly usage charts
 - Per-model cost breakdown
+- Per-project usage donut chart
 - Sessions, messages, output tokens
 - Usage streak tracking
 - Local JSON snapshots for debugging
@@ -68,8 +74,7 @@ Generated files:
 
 ```
 ~/.code-usage/current/code-usage-dashboard.html
-~/.code-usage/current/claude.json
-~/.code-usage/current/codex.json
+~/.code-usage/current/openusage-data.json
 ```
 
 ## Privacy
