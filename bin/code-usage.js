@@ -15,6 +15,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const pkgPath = join(__dirname, '..', 'package.json');
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+
+const arg = process.argv[2];
+if (arg === '-v' || arg === '--version') {
+  console.log(pkg.version);
+  process.exit(0);
+}
 const appMeta = {
   name: pkg.name || 'code-usage',
   version: pkg.version || '0.0.0',
