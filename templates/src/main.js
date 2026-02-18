@@ -580,12 +580,19 @@ function renderPanel(panelEl,opts){
   // Banner
   var fb=el('div',{class:'freshness-banner'});
   var s1=el('span',{class:'date-info'});s1.appendChild(document.createTextNode('Sessions: '));s1.appendChild(el('span',{class:'date-val'},String(opts.totalSessions)));fb.appendChild(s1);
-  if(opts.badgeEls&&opts.badgeEls.length){var bwrap=el('div',{style:'display:flex;gap:6px;align-items:center;'});opts.badgeEls.forEach(function(b){bwrap.appendChild(b);});fb.appendChild(bwrap);}
+  var fbRight=el('div',{style:'display:flex;gap:6px;align-items:center;'});
+  if(opts.badgeEls&&opts.badgeEls.length){opts.badgeEls.forEach(function(b){fbRight.appendChild(b);});}
+  var moreToggle=el('button',{class:'more-stats-toggle',type:'button'});moreToggle.textContent='More \u25BE';
+  fbRight.appendChild(moreToggle);
+  fb.appendChild(fbRight);
   panelEl.appendChild(fb);
 
   // Stat cards
   var firstD=opts.firstDate?new Date(opts.firstDate):new Date();
   var totalSpanDays=Math.ceil((new Date()-firstD)/86400000)+1;
+  var tb=opts.tokenBreakdown;
+
+  // --- Top 8 cards ---
   var sg=el('div',{class:'stats-grid'});
   var cc=el('div',{class:'stat-card'});cc.appendChild(el('div',{class:'stat-label'},'Total Est. Cost'));cc.appendChild(el('div',{class:'stat-value cost'},fmtUSD(opts.displayCost)));
   cc.appendChild(el('div',{class:'stat-sub'},fullDateFromIso(opts.firstDate)+' - today'));
@@ -593,12 +600,13 @@ function renderPanel(panelEl,opts){
   sg.appendChild(createStatCard('Cost / Day',fmtUSD(opts.costPerDay),'cost','avg across '+opts.daysActive+' days'));
   sg.appendChild(createStatCard('Cost / Session',fmtUSD(opts.costPerSession),'cost',opts.totalSessions+' total sessions'));
   sg.appendChild(createStatCard('Streak',opts.streak+' days'));
-  sg.appendChild(createStatCard('Messages',opts.userMessages.toLocaleString()));
-  var tokCard=createStatCard('Tokens',fmt(opts.totalTokens||0),null,'out: '+fmt(opts.outputTokens));
-  var tb=opts.tokenBreakdown;
+  // Msgs / Session
+  var msgsPerSess=opts.totalSessions>0?(opts.userMessages/opts.totalSessions):0;
+  sg.appendChild(createStatCard('Msgs / Session',msgsPerSess.toFixed(1)));
+  // Tokens
+  var tokCard=createStatCard('Tokens',fmt(opts.totalTokens||0));
   if(tb){
     tokCard.style.position='relative';tokCard.classList.add('has-tooltip');
-    // Add info icon to the label
     var lbl=tokCard.querySelector('.stat-label');
     if(lbl)lbl.appendChild(el('span',{class:'info-icon'},'i'));
     var lines=[];
@@ -608,12 +616,54 @@ function renderPanel(panelEl,opts){
     if(tb.cacheWrite)lines.push('Cache Write: '+fmt(tb.cacheWrite));
     if(tb.cached)lines.push('Cached: '+fmt(tb.cached));
     if(tb.reasoning)lines.push('Reasoning: '+fmt(tb.reasoning));
-    var tip=el('div',{class:'stat-tooltip'},lines.join('\n'));
-    tokCard.appendChild(tip);
+    tokCard.appendChild(el('div',{class:'stat-tooltip'},lines.join('\n')));
   }
   sg.appendChild(tokCard);
-  if(opts.extraCards)opts.extraCards.forEach(function(c){sg.appendChild(c);});
+  // Output/$
+  var outPerDollar=(opts.displayCost>0)?(opts.outputTokens/opts.displayCost):0;
+  var opdCard=createStatCard('Output / $',fmt(Math.round(outPerDollar)));
+  opdCard.style.position='relative';opdCard.classList.add('has-tooltip');
+  var opdLbl=opdCard.querySelector('.stat-label');if(opdLbl)opdLbl.appendChild(el('span',{class:'info-icon'},'i'));
+  opdCard.appendChild(el('div',{class:'stat-tooltip'},'Output tokens per dollar spent\n'+fmt(opts.outputTokens)+' output / '+fmtUSD(opts.displayCost)));
+  sg.appendChild(opdCard);
+  // Cache Rate
+  if(tb){
+    var cacheToks=(tb.cacheRead||0)+(tb.cached||0)+(tb.cacheWrite||0);
+    var cacheRate=(opts.totalTokens>0)?(cacheToks/opts.totalTokens*100):0;
+    var crCard=createStatCard('Cache Rate',cacheRate.toFixed(1)+'%');
+    crCard.style.position='relative';crCard.classList.add('has-tooltip');
+    var crLbl=crCard.querySelector('.stat-label');if(crLbl)crLbl.appendChild(el('span',{class:'info-icon'},'i'));
+    var crLines=['Cache tokens as % of all tokens'];
+    if(tb.cacheRead)crLines.push('Cache Read: '+fmt(tb.cacheRead));
+    if(tb.cached)crLines.push('Cached: '+fmt(tb.cached));
+    if(tb.cacheWrite)crLines.push('Cache Write: '+fmt(tb.cacheWrite));
+    crLines.push('Total: '+fmt(cacheToks)+' / '+fmt(opts.totalTokens));
+    crCard.appendChild(el('div',{class:'stat-tooltip'},crLines.join('\n')));
+    sg.appendChild(crCard);
+  }
   panelEl.appendChild(sg);
+
+  // --- More cards (hidden by default) ---
+  var moreGrid=el('div',{class:'stats-grid stats-more'});
+  moreGrid.style.display='none';
+  moreGrid.appendChild(createStatCard('Messages',opts.userMessages.toLocaleString()));
+  // Output %
+  var outPct=(opts.totalTokens>0)?((opts.outputTokens/opts.totalTokens)*100):0;
+  var opCard=createStatCard('Output %',outPct.toFixed(1)+'%');
+  opCard.style.position='relative';opCard.classList.add('has-tooltip');
+  var opLbl=opCard.querySelector('.stat-label');if(opLbl)opLbl.appendChild(el('span',{class:'info-icon'},'i'));
+  opCard.appendChild(el('div',{class:'stat-tooltip'},'Output tokens as % of all tokens\n'+fmt(opts.outputTokens)+' / '+fmt(opts.totalTokens)));
+  moreGrid.appendChild(opCard);
+  if(opts.extraCards)opts.extraCards.forEach(function(c){moreGrid.appendChild(c);});
+  panelEl.appendChild(moreGrid);
+
+  // Toggle more stats
+  var moreExpanded=false;
+  moreToggle.addEventListener('click',function(){
+    moreExpanded=!moreExpanded;
+    moreGrid.style.display=moreExpanded?'':'none';
+    moreToggle.textContent=moreExpanded?'Less \u25B4':'More \u25BE';
+  });
 
   // Daily chart
   var sec1=el('div',{class:'section'});sec1.appendChild(el('h2',null,'Daily Activity'));
@@ -820,5 +870,18 @@ function main(){
 }
 
 renderFooter();
+// Add relative time to gen-time
+(function(){
+  var gt=document.getElementById('gen-time');
+  if(!gt||!DATA.metadata||!DATA.metadata.createdAt)return;
+  var diff=Math.floor((Date.now()-new Date(DATA.metadata.createdAt).getTime())/1000);
+  var ago;
+  if(diff<5)ago='just now';
+  else if(diff<60)ago=diff+'s ago';
+  else if(diff<3600)ago=Math.floor(diff/60)+'m ago';
+  else if(diff<86400)ago=Math.floor(diff/3600)+'h ago';
+  else ago=Math.floor(diff/86400)+'d ago';
+  gt.textContent=gt.textContent+' ('+ago+')';
+})();
 if(DATA.claude!==null||DATA.codex!==null||DATA.opencode!==null){main();}
 else{document.querySelector('.container').insertAdjacentElement('afterbegin',el('div',{class:'no-data'},'No data. Run code-usage to generate.'));}
