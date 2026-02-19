@@ -297,7 +297,6 @@ body {
   box-shadow: 0 1px 3px var(--shadow-card);
 }
 .stat-card.hero {
-  grid-column: span 2;
   border-left: 3px solid var(--accent, #3b82f6);
 }
 .stat-label {
@@ -1010,9 +1009,6 @@ td.cost-cell {
   }
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
-  }
-  .stat-card.hero {
-    grid-column: span 2;
   }
   .container {
     padding: 16px;
