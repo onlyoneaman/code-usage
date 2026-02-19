@@ -16,7 +16,7 @@
     "sync:litellm": "node scripts/sync-litellm.mjs",
     "build:prod": "npm run build:dashboard && npm run pack:check",
     "pack:check": "npm pack --dry-run --cache ./.npm-cache",
-    "publish": "npm run build:prod && npm publish --access public --cache ./.npm-cache --ignore-scripts"
+    "prepublishOnly": "npm run build:prod"
   },
   "files": [
     "bin",

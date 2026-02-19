@@ -819,6 +819,109 @@ function stackedGradient(parts) {
   return `linear-gradient(to top, ${stops.join(", ")})`;
 }
 
+function renderHeatmap(container, allDays, accent) {
+  var WEEKS = 52;
+  var dayMap = {};
+  allDays.forEach((d) => {
+    dayMap[d.date] = d;
+  });
+
+  // Build calendar: last 52 weeks ending on today's week
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var dow = today.getDay(); // 0=Sun
+  var endDate = new Date(today);
+  endDate.setDate(endDate.getDate() + (6 - dow));
+  var startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - WEEKS * 7 + 1);
+
+  var cells = [];
+  var costs = [];
+  var d = new Date(startDate);
+  while (d <= endDate) {
+    var key = d.toISOString().slice(0, 10);
+    var entry = dayMap[key] || null;
+    var cost = entry ? entry.cost || 0 : 0;
+    if (cost > 0) costs.push(cost);
+    cells.push({ date: key, cost: cost, sessions: entry ? entry.sessions || 0 : 0 });
+    d.setDate(d.getDate() + 1);
+  }
+
+  // Percentile thresholds from non-zero costs
+  costs.sort((a, b) => a - b);
+  var p25 = costs.length > 0 ? costs[Math.floor(costs.length * 0.25)] : 0;
+  var p50 = costs.length > 0 ? costs[Math.floor(costs.length * 0.5)] : 0;
+  var p75 = costs.length > 0 ? costs[Math.floor(costs.length * 0.75)] : 0;
+
+  function cellColor(cost) {
+    if (cost <= 0) return "var(--heatmap-empty, var(--border-main))";
+    var opacity = cost < p25 ? 0.2 : cost < p50 ? 0.4 : cost < p75 ? 0.6 : 0.9;
+    return hexToRgba(accent, opacity);
+  }
+
+  // Month labels — use percentage widths to match flexible grid
+  var monthRow = el("div", { class: "heatmap-months" });
+  var prevMonth = -1;
+  var weekMonths = [];
+  for (var w = 0; w < WEEKS; w++) {
+    var weekStart = new Date(startDate);
+    weekStart.setDate(weekStart.getDate() + w * 7);
+    var m = weekStart.getMonth();
+    if (m !== prevMonth) {
+      weekMonths.push({ week: w, label: weekStart.toLocaleString("en-US", { month: "short" }) });
+      prevMonth = m;
+    }
+  }
+  weekMonths.forEach((wm, i) => {
+    var nextPos = i + 1 < weekMonths.length ? weekMonths[i + 1].week : WEEKS;
+    var span = nextPos - wm.week;
+    monthRow.appendChild(el("span", { class: "heatmap-month-label", style: "flex:" + span }, wm.label));
+  });
+
+  // Day labels
+  var dayLabels = el("div", { class: "heatmap-days" });
+  var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  for (var i = 0; i < 7; i++) {
+    var show = i === 1 || i === 3 || i === 5;
+    dayLabels.appendChild(el("div", { class: "heatmap-day-label" }, show ? DAYS[i].slice(0, 3) : ""));
+  }
+
+  // Grid — 7 rows, 52 columns, auto-flow column, full width
+  var grid = el("div", { class: "heatmap-grid", style: "grid-template-columns:repeat(" + WEEKS + ",1fr)" });
+  cells.forEach((c) => {
+    var dateObj = new Date(c.date + "T00:00:00");
+    var label = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    var tip = c.cost > 0 ? label + ": $" + c.cost.toFixed(2) + " (" + c.sessions + " sess)" : label + ": no activity";
+    grid.appendChild(el("div", { class: "heatmap-cell", style: "background:" + cellColor(c.cost), title: tip }));
+  });
+
+  // Legend
+  var legend = el("div", { class: "heatmap-legend" });
+  legend.appendChild(document.createTextNode("Less"));
+  [0, 0.2, 0.4, 0.6, 0.9].forEach((op) => {
+    var bg = op === 0 ? "var(--heatmap-empty, var(--border-main))" : hexToRgba(accent, op);
+    legend.appendChild(el("div", { class: "heatmap-legend-cell", style: "background:" + bg }));
+  });
+  legend.appendChild(document.createTextNode("More"));
+
+  monthRow.style.marginLeft = "30px"; // offset for day labels
+  container.appendChild(monthRow);
+  var row = el("div", { class: "heatmap-wrap" });
+  row.appendChild(dayLabels);
+  row.appendChild(grid);
+  container.appendChild(row);
+  return legend;
+}
+
+function hexToRgba(hex, alpha) {
+  hex = hex.replace("#", "");
+  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  var r = parseInt(hex.substring(0, 2), 16);
+  var g = parseInt(hex.substring(2, 4), 16);
+  var b = parseInt(hex.substring(4, 6), 16);
+  return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+}
+
 function renderBarChart(container, allDays, maxMsg, accent, stacked) {
   container.textContent = "";
   allDays.forEach((d) => {
@@ -1104,6 +1207,17 @@ function renderPanel(panelEl, opts) {
     moreGrid.style.display = moreExpanded ? "" : "none";
     moreToggle.textContent = moreExpanded ? "Less \u25B4" : "More \u25BE";
   });
+
+  // Heatmap
+  if (opts.allDays && opts.allDays.length > 0) {
+    var secHeat = el("div", { class: "section" });
+    var heatHeader = el("div", { class: "section-header" });
+    heatHeader.appendChild(el("h2", null, "Activity"));
+    var heatLegend = renderHeatmap(secHeat, opts.allDays, accent);
+    if (heatLegend) heatHeader.appendChild(heatLegend);
+    secHeat.insertBefore(heatHeader, secHeat.firstChild);
+    panelEl.appendChild(secHeat);
+  }
 
   // Daily chart
   var sec1 = el("div", { class: "section" });
