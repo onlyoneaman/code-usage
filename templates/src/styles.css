@@ -593,14 +593,6 @@ td.cost-cell {
   max-height: 50px;
   overflow: hidden;
 }
-.chart-y-label {
-  position: absolute;
-  top: -2px;
-  left: 0;
-  font-size: 10px;
-  color: var(--text-faint);
-  pointer-events: none;
-}
 .table-show-more {
   background: none;
   border: 1px solid var(--border-main);
@@ -730,10 +722,6 @@ td.cost-cell {
   height: 160px;
   justify-content: center;
   position: relative;
-}
-.weekly-chart .chart-y-label {
-  left: auto;
-  right: 0;
 }
 .weekly-chart .bar-group {
   display: flex;

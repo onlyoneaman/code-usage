@@ -926,12 +926,6 @@ function hexToRgba(hex, alpha) {
 
 function renderBarChart(container, allDays, maxMsg, accent, stacked) {
   container.textContent = "";
-  // Y-axis max label
-  var maxCost = 0;
-  allDays.forEach((d) => {
-    if (d.cost > maxCost) maxCost = d.cost;
-  });
-  if (maxCost > 0) container.appendChild(el("div", { class: "chart-y-label" }, fmtUSD(maxCost)));
   allDays.forEach((d) => {
     var isEmpty = d.sessions === 0;
     var h = isEmpty ? 0 : Math.max(4, (d.messages / maxMsg) * 140);
@@ -965,8 +959,6 @@ function renderWeeklyChart(container, weeklySorted, weeklyMap, accent, stacked) 
   weeklySorted.forEach((wk) => {
     if (weeklyMap[wk].cost > maxCost) maxCost = weeklyMap[wk].cost;
   });
-  // Y-axis max label
-  if (maxCost > 1) container.appendChild(el("div", { class: "chart-y-label" }, fmtUSD(maxCost)));
   weeklySorted.forEach((wk) => {
     var w = weeklyMap[wk];
     var h = Math.max(8, (w.cost / maxCost) * 130);
