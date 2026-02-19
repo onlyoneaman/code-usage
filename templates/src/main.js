@@ -887,12 +887,14 @@ function renderHeatmap(container, allDays, accent) {
   }
 
   // Grid — 7 rows, 52 columns, auto-flow column, full width
+  var todayStr = today.toISOString().slice(0, 10);
   var grid = el("div", { class: "heatmap-grid", style: "grid-template-columns:repeat(" + WEEKS + ",1fr)" });
   cells.forEach((c) => {
     var dateObj = new Date(c.date + "T00:00:00");
     var label = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     var tip = c.cost > 0 ? label + ": $" + c.cost.toFixed(2) + " (" + c.sessions + " sess)" : label + ": no activity";
-    grid.appendChild(el("div", { class: "heatmap-cell", style: "background:" + cellColor(c.cost), title: tip }));
+    var cls = "heatmap-cell" + (c.date === todayStr ? " today" : "");
+    grid.appendChild(el("div", { class: cls, style: "background:" + cellColor(c.cost), title: tip }));
   });
 
   // Legend
@@ -924,6 +926,12 @@ function hexToRgba(hex, alpha) {
 
 function renderBarChart(container, allDays, maxMsg, accent, stacked) {
   container.textContent = "";
+  // Y-axis max label
+  var maxCost = 0;
+  allDays.forEach((d) => {
+    if (d.cost > maxCost) maxCost = d.cost;
+  });
+  if (maxCost > 0) container.appendChild(el("div", { class: "chart-y-label" }, fmtUSD(maxCost)));
   allDays.forEach((d) => {
     var isEmpty = d.sessions === 0;
     var h = isEmpty ? 0 : Math.max(4, (d.messages / maxMsg) * 140);
@@ -957,6 +965,8 @@ function renderWeeklyChart(container, weeklySorted, weeklyMap, accent, stacked) 
   weeklySorted.forEach((wk) => {
     if (weeklyMap[wk].cost > maxCost) maxCost = weeklyMap[wk].cost;
   });
+  // Y-axis max label
+  if (maxCost > 1) container.appendChild(el("div", { class: "chart-y-label" }, fmtUSD(maxCost)));
   weeklySorted.forEach((wk) => {
     var w = weeklyMap[wk];
     var h = Math.max(8, (w.cost / maxCost) * 130);
@@ -997,7 +1007,9 @@ var PROJ_COLORS = [
 function renderProjects(container, projects, _accent, _stacked) {
   if (!projects || !projects.length) return;
   var sec = el("div", { class: "section" });
-  sec.appendChild(el("h2", null, "Projects"));
+  var projHeader = el("div", { class: "section-header" });
+  projHeader.appendChild(el("h2", null, "Projects"));
+  sec.appendChild(projHeader);
   var wrap = el("div", { class: "proj-wrap" });
 
   // Build donut data: top 5 + "Other"
@@ -1110,7 +1122,7 @@ function renderPanel(panelEl, opts) {
 
   // --- Top 8 cards ---
   var sg = el("div", { class: "stats-grid" });
-  var cc = el("div", { class: "stat-card" });
+  var cc = el("div", { class: "stat-card hero" });
   cc.appendChild(el("div", { class: "stat-label" }, "Total Est. Cost"));
   cc.appendChild(el("div", { class: "stat-value cost" }, fmtUSD(opts.displayCost)));
   cc.appendChild(el("div", { class: "stat-sub" }, `${fullDateFromIso(opts.firstDate)} - today`));
@@ -1221,11 +1233,11 @@ function renderPanel(panelEl, opts) {
 
   // Daily chart
   var sec1 = el("div", { class: "section" });
-  sec1.appendChild(el("h2", null, "Daily Activity"));
+  var sec1Header = el("div", { class: "section-header" });
+  sec1Header.appendChild(el("h2", null, "Daily Activity"));
+  if (opts.stacked) sec1Header.appendChild(makeLegend(opts.activeProviders));
+  sec1.appendChild(sec1Header);
   var cc1 = el("div", { class: "chart-container" });
-  if (opts.stacked) {
-    cc1.appendChild(makeLegend(opts.activeProviders));
-  }
   var bc = el("div", { class: "bar-chart" });
   renderBarChart(bc, opts.allDays, opts.maxMsg, accent, opts.stacked);
   cc1.appendChild(bc);
@@ -1235,11 +1247,11 @@ function renderPanel(panelEl, opts) {
   // Weekly chart
   if (opts.weeklySorted && opts.weeklySorted.length > 0) {
     var sec3 = el("div", { class: "section" });
-    sec3.appendChild(el("h2", null, "Weekly Usage"));
+    var sec3Header = el("div", { class: "section-header" });
+    sec3Header.appendChild(el("h2", null, "Weekly Usage"));
+    if (opts.stacked) sec3Header.appendChild(makeLegend(opts.activeProviders));
+    sec3.appendChild(sec3Header);
     var cc3 = el("div", { class: "chart-container" });
-    if (opts.stacked) {
-      cc3.appendChild(makeLegend(opts.activeProviders));
-    }
     var wc = el("div", { class: "weekly-chart" });
     renderWeeklyChart(wc, opts.weeklySorted, opts.weeklyMap, accent, opts.stacked);
     cc3.appendChild(wc);
@@ -1253,7 +1265,9 @@ function renderPanel(panelEl, opts) {
   // Model usage
   if (opts.modelUsage && opts.modelUsage.length > 0) {
     var sec2 = el("div", { class: "section" });
-    sec2.appendChild(el("h2", null, "Usage by Model"));
+    var sec2Header = el("div", { class: "section-header" });
+    sec2Header.appendChild(el("h2", null, "Usage by Model"));
+    sec2.appendChild(sec2Header);
     var maxModelCost = opts.modelUsage[0].cost || 1;
     var showProviderBadge = !!opts.showProviderBadge;
     var muList = el("div", { class: "model-usage-list" });
@@ -1284,7 +1298,7 @@ function renderPanel(panelEl, opts) {
   if (opts.dailyRows && opts.dailyRows.length > 0) {
     var sec4 = el("div", { class: "section" });
     var dailyCostView = opts.dailyCostView === "model" ? "model" : opts.stacked ? "agent" : "model";
-    var head = el("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px;" });
+    var head = el("div", { class: "section-header" });
     head.appendChild(el("h2", null, "Daily Cost"));
     if (opts.stacked && typeof opts.onDailyCostViewChange === "function") {
       var viewToggle = el("div", { class: "daily-view-toggle" });
@@ -1331,7 +1345,9 @@ function renderPanel(panelEl, opts) {
       var key = modelUsageKey(id);
       return modelCostByKey[key] || 0;
     }
-    opts.dailyRows.forEach((row) => {
+    var TABLE_INITIAL = 7;
+    var tableExpanded = false;
+    function buildRow(row) {
       var tr = el("tr");
       tr.appendChild(el("td", null, fullDateStr(row.date)));
       tr.appendChild(el("td", { class: "num" }, String(row.sessions)));
@@ -1376,10 +1392,28 @@ function renderPanel(panelEl, opts) {
       } else tdM.textContent = "-";
       tr.appendChild(tdM);
       tr.appendChild(el("td", { class: "cost-cell", style: `color:${rowCostColor}` }, fmtUSD(row.cost)));
+      return tr;
+    }
+    opts.dailyRows.forEach((row, idx) => {
+      var tr = buildRow(row);
+      if (idx >= TABLE_INITIAL) tr.style.display = "none";
       tbody.appendChild(tr);
     });
     tbl.appendChild(tbody);
     sec4.appendChild(tbl);
+    if (opts.dailyRows.length > TABLE_INITIAL) {
+      var remaining = opts.dailyRows.length - TABLE_INITIAL;
+      var tblToggle = el("button", { class: "table-show-more", type: "button" }, `Show ${remaining} more days`);
+      tblToggle.addEventListener("click", () => {
+        tableExpanded = !tableExpanded;
+        var rows = tbody.querySelectorAll("tr");
+        for (var ri = TABLE_INITIAL; ri < rows.length; ri++) {
+          rows[ri].style.display = tableExpanded ? "" : "none";
+        }
+        tblToggle.textContent = tableExpanded ? "Show less" : `Show ${remaining} more days`;
+      });
+      sec4.appendChild(tblToggle);
+    }
     panelEl.appendChild(sec4);
   }
 

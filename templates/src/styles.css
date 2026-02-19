@@ -296,6 +296,10 @@ body {
   padding: 20px;
   box-shadow: 0 1px 3px var(--shadow-card);
 }
+.stat-card.hero {
+  grid-column: span 2;
+  border-left: 3px solid var(--accent, #3b82f6);
+}
 .stat-label {
   font-size: 11px;
   text-transform: uppercase;
@@ -590,6 +594,30 @@ td.cost-cell {
   max-height: 50px;
   overflow: hidden;
 }
+.chart-y-label {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  font-size: 10px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.table-show-more {
+  background: none;
+  border: 1px solid var(--border-main);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin-top: 8px;
+  width: 100%;
+}
+.table-show-more:hover {
+  background: var(--hover-row);
+  color: var(--text-secondary);
+}
 /* Heatmap */
 .heatmap-wrap {
   display: flex;
@@ -629,6 +657,11 @@ td.cost-cell {
 }
 .heatmap-cell:hover {
   filter: brightness(0.85);
+}
+.heatmap-cell.today {
+  outline: 2px solid var(--text-muted);
+  outline-offset: -1px;
+  border-radius: 2px;
 }
 .heatmap-months {
   display: flex;
@@ -698,6 +731,10 @@ td.cost-cell {
   height: 160px;
   justify-content: center;
   position: relative;
+}
+.weekly-chart .chart-y-label {
+  left: auto;
+  right: 0;
 }
 .weekly-chart .bar-group {
   display: flex;
@@ -973,6 +1010,9 @@ td.cost-cell {
   }
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .stat-card.hero {
+    grid-column: span 2;
   }
   .container {
     padding: 16px;
