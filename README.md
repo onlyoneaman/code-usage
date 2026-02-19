@@ -87,9 +87,9 @@ All processing is local.
 Claude:
 
 ```
-~/.claude/stats-cache.json
-~/.claude/usage-data/session-meta/*.json
+~/.config/claude/projects/**/*.jsonl
 ~/.claude/projects/**/*.jsonl
+~/.claude/usage-data/session-meta/*.json
 ```
 
 Codex:

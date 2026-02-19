@@ -1,221 +1,178 @@
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { getClaudePricing } from '../pricing/claude.js';
 
 export function collectClaude() {
   const home = homedir();
-  const statsFile = join(home, '.claude', 'stats-cache.json');
-  const sessionMetaDir = join(home, '.claude', 'usage-data', 'session-meta');
+  const claudeRoots = getClaudeRoots(home);
+  const files = [];
+  for (const root of claudeRoots) {
+    const projectsDir = join(root, 'projects');
+    if (existsSync(projectsDir)) collectJsonlFiles(projectsDir, files);
+  }
+  files.sort();
 
-  const stats = JSON.parse(readFileSync(statsFile, 'utf8'));
-  const mu = stats.modelUsage || {};
-  const daily = stats.dailyActivity || [];
-  const dmt = stats.dailyModelTokens || [];
-  const lastDate = stats.lastComputedDate || '1970-01-01';
+  // Per-model and per-day aggregation from raw JSONL events (ccusage-like)
+  const modelAgg = {}; // model -> { input, output, cacheRead, cacheWrite, cost }
+  const dayAgg = {}; // date -> { cost, sessions:Set, messages, models:Set, modelCosts:{} }
+  const projAgg = {}; // path -> { name, daily: { date -> {sessions:Set, messages, cost} } }
 
-  // --- Per-model cost breakdown (exact) ---
-  const models = [];
+  const seen = new Set(); // dedupe by message.id + requestId
+  const allSessions = new Set();
+  let totalMessages = 0;
+  let firstDate = null;
+
+  for (const fpath of files) {
+    const fallbackSessionId = basename(fpath, '.jsonl');
+    const fallbackProjectPath = extractProjectPathFromFile(fpath);
+
+    let lines;
+    try { lines = readFileSync(fpath, 'utf8').split('\n'); } catch { continue; }
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let entry;
+      try { entry = JSON.parse(line); } catch { continue; }
+
+      const ts = typeof entry.timestamp === 'string' ? entry.timestamp : null;
+      if (!ts) continue;
+      const date = ts.slice(0, 10);
+      if (!date) continue;
+      if (!firstDate || date < firstDate) firstDate = date;
+
+      const msg = entry.message || {};
+      const reqId = entry.requestId || null;
+      const msgId = msg.id || null;
+      if (msgId && reqId) {
+        const key = `${msgId}:${reqId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+
+      const sessionId = entry.sessionId || fallbackSessionId;
+      const projectPath = entry.cwd || fallbackProjectPath || '';
+      const sessionKey = `${projectPath || '<unknown>'}::${sessionId}`;
+
+      if (!dayAgg[date]) dayAgg[date] = { cost: 0, sessions: new Set(), messages: 0, models: new Set(), modelCosts: {} };
+      dayAgg[date].sessions.add(sessionKey);
+      allSessions.add(sessionKey);
+
+      if (projectPath) {
+        const projName = projectPath.split('/').filter(Boolean).pop() || projectPath;
+        if (!projAgg[projectPath]) projAgg[projectPath] = { name: projName, daily: {} };
+        if (!projAgg[projectPath].daily[date]) projAgg[projectPath].daily[date] = { sessions: new Set(), messages: 0, cost: 0 };
+        projAgg[projectPath].daily[date].sessions.add(sessionKey);
+      }
+
+      if (entry.type === 'user') {
+        totalMessages++;
+        dayAgg[date].messages++;
+        if (projectPath) projAgg[projectPath].daily[date].messages++;
+      }
+
+      const usage = msg.usage || null;
+      if (!usage || typeof usage !== 'object') continue;
+
+      const input = usage.input_tokens || 0;
+      const output = usage.output_tokens || 0;
+      const cacheRead = usage.cache_read_input_tokens || 0;
+      const cacheWrite = usage.cache_creation_input_tokens || 0;
+      const model = msg.model || '<unknown>';
+      const tokenSum = input + output + cacheRead + cacheWrite;
+
+      // Claude emits synthetic assistant rows (rate-limit/no-op) with zero usage.
+      // Keep session/message accounting, but exclude them from model/cost stats.
+      if (model === '<synthetic>' && tokenSum === 0) continue;
+
+      let cost = Number.isFinite(entry.costUSD) ? entry.costUSD : null;
+      if (cost === null) {
+        if (model === '<unknown>') cost = 0;
+        else {
+          const p = getClaudePricing(model);
+          const m = 1e6;
+          cost = input / m * p.input + output / m * p.output + cacheRead / m * p.cacheRead + cacheWrite / m * p.cacheWrite;
+        }
+      }
+
+      if (!modelAgg[model]) modelAgg[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+      modelAgg[model].input += input;
+      modelAgg[model].output += output;
+      modelAgg[model].cacheRead += cacheRead;
+      modelAgg[model].cacheWrite += cacheWrite;
+      modelAgg[model].cost += cost;
+
+      dayAgg[date].cost += cost;
+      dayAgg[date].models.add(model);
+      dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
+
+      if (projectPath) projAgg[projectPath].daily[date].cost += cost;
+    }
+  }
+
+  // Build model output
   let totalCost = 0;
-  const modelTotalTokens = {};
-  const modelCost = {};
-
-  for (const [id, u] of Object.entries(mu)) {
-    const p = getClaudePricing(id);
+  const models = [];
+  for (const [id, a] of Object.entries(modelAgg)) {
+    const p = id === '<unknown>' ? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } : getClaudePricing(id);
     const m = 1e6;
-    const iC = (u.inputTokens || 0) / m * p.input;
-    const oC = (u.outputTokens || 0) / m * p.output;
-    const crC = (u.cacheReadInputTokens || 0) / m * p.cacheRead;
-    const cwC = (u.cacheCreationInputTokens || 0) / m * p.cacheWrite;
-    const cost = iC + oC + crC + cwC;
-
-    modelCost[id] = cost;
-    totalCost += cost;
-    modelTotalTokens[id] = 0;
-    dmt.forEach(d => { modelTotalTokens[id] += (d.tokensByModel || {})[id] || 0; });
-
+    const iC = a.input / m * p.input;
+    const oC = a.output / m * p.output;
+    const crC = a.cacheRead / m * p.cacheRead;
+    const cwC = a.cacheWrite / m * p.cacheWrite;
+    totalCost += a.cost;
     models.push({
-      id, cost,
+      id,
+      cost: a.cost,
       details: [
-        { label: 'Input', tokens: u.inputTokens || 0, cost: iC },
-        { label: 'Output', tokens: u.outputTokens || 0, cost: oC },
-        { label: 'Cache Read', tokens: u.cacheReadInputTokens || 0, cost: crC },
-        { label: 'Cache Write', tokens: u.cacheCreationInputTokens || 0, cost: cwC },
+        { label: 'Input', tokens: a.input, cost: iC },
+        { label: 'Output', tokens: a.output, cost: oC },
+        { label: 'Cache Read', tokens: a.cacheRead, cost: crC },
+        { label: 'Cache Write', tokens: a.cacheWrite, cost: cwC },
       ],
     });
   }
+  models.sort((a, b) => b.cost - a.cost);
 
-  // --- Daily costs (proportional from model totals) ---
-  const dailyByDate = {};
-  daily.forEach(d => { dailyByDate[d.date] = d; });
+  // Build daily output
+  const dailyArr = Object.keys(dayAgg).sort().map(date => ({
+    date,
+    cost: dayAgg[date].cost,
+    sessions: dayAgg[date].sessions.size,
+    messages: dayAgg[date].messages,
+    models: [...dayAgg[date].models],
+    modelCosts: dayAgg[date].modelCosts,
+  }));
 
-  const dailyArr = dmt.map(d => {
-    let cost = 0;
-    const dayModels = Object.keys(d.tokensByModel || {});
-    const modelCosts = {};
-    for (const mid of dayModels) {
-      const dayTok = (d.tokensByModel || {})[mid] || 0;
-      const totalTok = modelTotalTokens[mid] || 0;
-      if (totalTok > 0) {
-        const dayCost = modelCost[mid] * (dayTok / totalTok);
-        cost += dayCost;
-        modelCosts[mid] = dayCost;
-      }
-    }
-    const act = dailyByDate[d.date];
-    return {
-      date: d.date, cost,
-      sessions: act ? act.sessionCount || 0 : 0,
-      messages: act ? act.messageCount || 0 : 0,
-      models: dayModels,
-      modelCosts,
-    };
-  });
-
-  // --- Session-meta: extras + recent sessions beyond lastComputedDate ---
-  let linesAdded = 0, linesRemoved = 0, filesModified = 0, userMessages = 0;
-  const recentByDate = {}; // date → {sessions, messages, outputTokens, models}
-  let recentTotalSessions = 0;
-  // Per-project per-day aggregation
-  const projAgg = {}; // path → { name, sessions, messages, outputTokens, daily: { date → {sessions, messages, outputTokens} } }
-  let globalOutputTokens = 0;
-
-  if (existsSync(sessionMetaDir)) {
-    for (const file of readdirSync(sessionMetaDir)) {
-      if (!file.endsWith('.json')) continue;
-      try {
-        const s = JSON.parse(readFileSync(join(sessionMetaDir, file), 'utf8'));
-        linesAdded += s.lines_added || 0;
-        linesRemoved += s.lines_removed || 0;
-        filesModified += s.files_modified || 0;
-        userMessages += s.user_message_count || 0;
-
-        // Project aggregation
-        const projPath = s.project_path || '';
-        const startDate = (s.start_time || '').slice(0, 10);
-        const outTok = s.output_tokens || 0;
-        globalOutputTokens += outTok;
-        if (projPath && startDate) {
-          const projName = projPath.split('/').filter(Boolean).pop() || projPath;
-          if (!projAgg[projPath]) projAgg[projPath] = { name: projName, sessions: 0, messages: 0, outputTokens: 0, daily: {} };
-          projAgg[projPath].sessions++;
-          projAgg[projPath].messages += s.user_message_count || 0;
-          projAgg[projPath].outputTokens += outTok;
-          if (!projAgg[projPath].daily[startDate]) projAgg[projPath].daily[startDate] = { sessions: 0, messages: 0, outputTokens: 0 };
-          projAgg[projPath].daily[startDate].sessions++;
-          projAgg[projPath].daily[startDate].messages += s.user_message_count || 0;
-          projAgg[projPath].daily[startDate].outputTokens += outTok;
-        }
-
-        // Check if this session is beyond the cached data
-        if (startDate > lastDate) {
-          recentTotalSessions++;
-          if (!recentByDate[startDate]) recentByDate[startDate] = { sessions: 0, messages: 0, outputTokens: 0, models: new Set() };
-          recentByDate[startDate].sessions++;
-          recentByDate[startDate].messages += s.user_message_count || 0;
-          recentByDate[startDate].outputTokens += outTok;
-          if (s.model) recentByDate[startDate].models.add(s.model);
-        }
-      } catch { /* skip */ }
-    }
-  }
-
-  // Also scan live transcripts for sessions not yet in session-meta (still active today)
-  const projectsDir = join(home, '.claude', 'projects');
-  if (existsSync(projectsDir)) {
-    const seen = new Set();
-    for (const projEntry of readdirSync(projectsDir, { withFileTypes: true })) {
-      if (!projEntry.isDirectory()) continue;
-      const projPath = join(projectsDir, projEntry.name);
-      try {
-        for (const file of readdirSync(projPath)) {
-          if (!file.endsWith('.jsonl')) continue;
-          const fpath = join(projPath, file);
-          const mdate = statSync(fpath).mtime.toISOString().slice(0, 10);
-          if (mdate <= lastDate) continue;
-          const sid = basename(file, '.jsonl');
-          if (seen.has(sid)) continue;
-          seen.add(sid);
-          if (!recentByDate[mdate]) recentByDate[mdate] = { sessions: 0, messages: 0, outputTokens: 0, models: new Set() };
-          recentByDate[mdate].sessions++;
-          recentTotalSessions++;
-          // Parse transcript for model + output estimate
-          try {
-            const lines = readFileSync(fpath, 'utf8').split('\n');
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              try {
-                const entry = JSON.parse(line);
-                if (entry.type === 'user') recentByDate[mdate].messages++;
-                if (entry.type === 'assistant') {
-                  const msg = entry.message || {};
-                  if (msg.model) recentByDate[mdate].models.add(msg.model);
-                  for (const block of (msg.content || [])) {
-                    if (block && block.type === 'text' && block.text) {
-                      recentByDate[mdate].outputTokens += Math.ceil(block.text.length / 4);
-                    }
-                  }
-                }
-              } catch { /* skip bad line */ }
-            }
-          } catch { /* skip unreadable */ }
-        }
-      } catch { /* skip */ }
-    }
-  }
-
-  // Add recent days to dailyArr
-  let recentCost = 0;
-  for (const [date, r] of Object.entries(recentByDate)) {
-    // Estimate cost from output tokens using the dominant model's output price
-    const model = r.models.size > 0 ? [...r.models][0] : Object.keys(mu)[0] || 'claude-opus-4-6';
-    const p = getClaudePricing(model);
-    const estCost = (r.outputTokens / 1e6) * p.output;
-    recentCost += estCost;
-    const modelCosts = {};
-    modelCosts[model] = estCost;
-    dailyArr.push({
-      date, cost: estCost,
-      sessions: r.sessions, messages: r.messages,
-      models: [...r.models],
-      modelCosts,
-    });
-  }
-  totalCost += recentCost;
-  dailyArr.sort((a, b) => a.date.localeCompare(b.date));
-
-  // --- Streak (from all daily dates including recent) ---
+  // Streak
   const activeDates = new Set(dailyArr.filter(d => d.sessions > 0).map(d => d.date));
   let streak = 0;
   const now = new Date();
   const check = new Date(now);
   while (activeDates.has(localDateStr(check))) { streak++; check.setDate(check.getDate() - 1); }
 
-  // --- Token totals ---
-  let totalOutputTokens = 0;
-  let totalTokens = 0;
-  let totalInputTokens = 0, totalCacheRead = 0, totalCacheWrite = 0;
-  for (const u of Object.values(mu)) {
-    totalInputTokens += u.inputTokens || 0;
-    totalOutputTokens += u.outputTokens || 0;
-    totalCacheRead += u.cacheReadInputTokens || 0;
-    totalCacheWrite += u.cacheCreationInputTokens || 0;
-    totalTokens += (u.inputTokens || 0) + (u.outputTokens || 0) + (u.cacheReadInputTokens || 0) + (u.cacheCreationInputTokens || 0);
+  // Token totals
+  let totalInputTokens = 0, totalOutputTokens = 0, totalCacheRead = 0, totalCacheWrite = 0, totalTokens = 0;
+  for (const a of Object.values(modelAgg)) {
+    totalInputTokens += a.input;
+    totalOutputTokens += a.output;
+    totalCacheRead += a.cacheRead;
+    totalCacheWrite += a.cacheWrite;
+    totalTokens += a.input + a.output + a.cacheRead + a.cacheWrite;
   }
 
-  const totalSessions = (stats.totalSessions || 0) + recentTotalSessions;
-
-  // Build projects array with cost distributed proportionally by outputTokens
+  // Build projects output
   const projects = Object.entries(projAgg).map(([path, p]) => {
-    const daily = Object.entries(p.daily).sort(([a],[b]) => a.localeCompare(b)).map(([date, d]) => {
-      const dayCost = globalOutputTokens > 0 ? totalCost * (d.outputTokens / globalOutputTokens) : 0;
-      return { date, sessions: d.sessions, messages: d.messages, cost: dayCost };
-    });
+    const daily = Object.entries(p.daily)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, d]) => ({ date, sessions: d.sessions.size, messages: d.messages, cost: d.cost }));
     const sessions = daily.reduce((s, d) => s + d.sessions, 0);
     const messages = daily.reduce((s, d) => s + d.messages, 0);
     const cost = daily.reduce((s, d) => s + d.cost, 0);
     return { name: p.name, path, sessions, messages, cost, daily };
   }).sort((a, b) => b.cost - a.cost);
+
+  const extra = collectSessionMetaExtras(claudeRoots);
 
   return {
     provider: 'claude',
@@ -224,18 +181,18 @@ export function collectClaude() {
     pricingNote: 'Pricing (per MTok): Opus 4.5/4.6: In $5, Out $25, CR $0.50, CW $6.25 | Sonnet 4.5: In $3, Out $15, CR $0.30, CW $3.75 | Haiku 4.5: In $1, Out $5, CR $0.10, CW $1.25. If on Claude Max, you pay a flat monthly rate.',
     summary: {
       totalCost,
-      totalSessions: totalSessions,
-      totalMessages: userMessages || stats.totalMessages || 0,
+      totalSessions: allSessions.size,
+      totalMessages,
       totalOutputTokens,
       totalTokens,
       tokenBreakdown: { input: totalInputTokens, output: totalOutputTokens, cacheRead: totalCacheRead, cacheWrite: totalCacheWrite },
-      firstDate: stats.firstSessionDate || null,
+      firstDate: firstDate ? `${firstDate}T00:00:00.000Z` : null,
       streak,
     },
     models,
     daily: dailyArr,
     projects,
-    extra: { linesAdded, linesRemoved, filesModified },
+    extra,
   };
 }
 
@@ -244,4 +201,72 @@ function localDateStr(d) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function getClaudeRoots(home) {
+  const env = (process.env.CLAUDE_CONFIG_DIR || '').trim();
+  const roots = [];
+  const seen = new Set();
+
+  const addRoot = (root) => {
+    if (!root) return;
+    if (seen.has(root)) return;
+    if (!existsSync(join(root, 'projects'))) return;
+    seen.add(root);
+    roots.push(root);
+  };
+
+  if (env) {
+    for (const raw of env.split(',')) addRoot(raw.trim());
+    return roots;
+  }
+
+  addRoot(join(home, '.config', 'claude'));
+  addRoot(join(home, '.claude'));
+  return roots;
+}
+
+function collectJsonlFiles(dir, out) {
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isFile() && entry.name.endsWith('.jsonl')) out.push(full);
+      else if (entry.isDirectory()) collectJsonlFiles(full, out);
+    }
+  } catch { /* skip unreadable */ }
+}
+
+function extractProjectPathFromFile(fpath) {
+  const normalized = fpath.replace(/\\/g, '/');
+  const marker = '/projects/';
+  const idx = normalized.lastIndexOf(marker);
+  if (idx === -1) return '';
+  const rest = normalized.slice(idx + marker.length);
+  const parts = rest.split('/').filter(Boolean);
+  if (parts.length === 0) return '';
+  return parts[0];
+}
+
+function collectSessionMetaExtras(claudeRoots) {
+  let linesAdded = 0;
+  let linesRemoved = 0;
+  let filesModified = 0;
+
+  for (const root of claudeRoots) {
+    const dir = join(root, 'usage-data', 'session-meta');
+    if (!existsSync(dir)) continue;
+    let files;
+    try { files = readdirSync(dir); } catch { continue; }
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      try {
+        const s = JSON.parse(readFileSync(join(dir, file), 'utf8'));
+        linesAdded += s.lines_added || 0;
+        linesRemoved += s.lines_removed || 0;
+        filesModified += s.files_modified || 0;
+      } catch { /* skip */ }
+    }
+  }
+
+  return { linesAdded, linesRemoved, filesModified };
 }

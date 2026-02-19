@@ -31,20 +31,11 @@ const appMeta = {
   assetBase: join(__dirname, '..', 'templates', 'assets'),
 };
 
-const hasClaude = existsSync(join(home, '.claude', 'stats-cache.json'));
+const hasClaude = hasClaudeJsonlData(home);
 
 let hasCodex = false;
 const codexSessionsDir = join(home, '.codex', 'sessions');
 if (existsSync(codexSessionsDir)) {
-  const findJsonl = (dir) => {
-    try {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.isFile() && entry.name.endsWith('.jsonl')) return true;
-        if (entry.isDirectory() && findJsonl(join(dir, entry.name))) return true;
-      }
-    } catch { /* skip */ }
-    return false;
-  };
   hasCodex = findJsonl(codexSessionsDir);
 }
 
@@ -94,3 +85,26 @@ console.log('done');
 
 const dashPath = join(home, '.code-usage', 'current', 'code-usage-dashboard.html');
 console.log(`\nIf the dashboard didn't open, visit:\n  file://${dashPath}`);
+
+function findJsonl(dir) {
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isFile() && entry.name.endsWith('.jsonl')) return true;
+      if (entry.isDirectory() && findJsonl(join(dir, entry.name))) return true;
+    }
+  } catch { /* skip */ }
+  return false;
+}
+
+function hasClaudeJsonlData(homeDir) {
+  const env = (process.env.CLAUDE_CONFIG_DIR || '').trim();
+  const roots = env
+    ? env.split(',').map(p => p.trim()).filter(Boolean)
+    : [join(homeDir, '.config', 'claude'), join(homeDir, '.claude')];
+
+  for (const root of roots) {
+    const projectsDir = join(root, 'projects');
+    if (existsSync(projectsDir) && findJsonl(projectsDir)) return true;
+  }
+  return false;
+}

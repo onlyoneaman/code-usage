@@ -27,7 +27,7 @@ export function getClaudePricing(modelId) {
   if (id.includes('haiku'))
     return { input: 1, output: 5, cacheRead: 0.10, cacheWrite: 1.25 };
   // LiteLLM fallback for unknown Claude models
-  const lm = litellmLookup(modelId, ['anthropic/']);
+  const lm = litellmLookup(modelId, ['anthropic/', 'anthropic.']);
   if (lm) return lm;
   return { input: 5, output: 25, cacheRead: 0.50, cacheWrite: 6.25 };
 }

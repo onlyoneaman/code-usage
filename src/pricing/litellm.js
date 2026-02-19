@@ -23,14 +23,15 @@ function loadData() {
  */
 export function litellmLookup(modelId, prefixes) {
   const db = loadData();
-  prefixes = prefixes || ['anthropic/', 'openai/', 'azure/'];
+  prefixes = prefixes || ['anthropic/', 'anthropic.', 'openai/', 'openai.', 'azure/', 'azure.'];
 
-  // Direct match
-  if (db[modelId]) return toMTok(db[modelId]);
-
-  // Provider-prefixed match
+  const keys = new Set([modelId]);
   for (const prefix of prefixes) {
-    const key = prefix + modelId;
+    keys.add(prefix + modelId);
+    if (prefix.endsWith('/')) keys.add(`${prefix.slice(0, -1)}.${modelId}`);
+    if (prefix.endsWith('.')) keys.add(`${prefix.slice(0, -1)}/${modelId}`);
+  }
+  for (const key of keys) {
     if (db[key]) return toMTok(db[key]);
   }
 
