@@ -1,0 +1,63 @@
+{
+  "v": 195,
+  "id": "T-test-thread-1",
+  "created": 1700000000000,
+  "title": "Test Thread",
+  "messages": [
+    { "role": "user", "id": 0, "messageId": 0, "content": [{ "type": "text", "text": "hello" }] },
+    {
+      "role": "assistant",
+      "id": 1,
+      "messageId": 1,
+      "content": [{ "type": "text", "text": "hi" }],
+      "usage": {
+        "model": "claude-haiku-4-5-20251001",
+        "inputTokens": 100,
+        "outputTokens": 50,
+        "cacheCreationInputTokens": 500,
+        "cacheReadInputTokens": 200,
+        "totalInputTokens": 800,
+        "credits": 1.5
+      }
+    },
+    { "role": "user", "id": 2, "messageId": 2, "content": [{ "type": "text", "text": "more" }] },
+    {
+      "role": "assistant",
+      "id": 3,
+      "messageId": 3,
+      "content": [{ "type": "text", "text": "sure" }],
+      "usage": {
+        "model": "claude-haiku-4-5-20251001",
+        "inputTokens": 200,
+        "outputTokens": 100,
+        "cacheCreationInputTokens": 0,
+        "cacheReadInputTokens": 600,
+        "credits": 2.0
+      }
+    }
+  ],
+  "usageLedger": {
+    "events": [
+      {
+        "id": "e1",
+        "timestamp": "2025-08-20T10:00:00.000Z",
+        "model": "claude-haiku-4-5-20251001",
+        "credits": 1.5,
+        "tokens": { "input": 100, "output": 50 },
+        "operationType": "inference",
+        "fromMessageId": 0,
+        "toMessageId": 1
+      },
+      {
+        "id": "e2",
+        "timestamp": "2025-08-20T11:00:00.000Z",
+        "model": "claude-haiku-4-5-20251001",
+        "credits": 2.0,
+        "tokens": { "input": 200, "output": 100 },
+        "operationType": "inference",
+        "fromMessageId": 2,
+        "toMessageId": 3
+      }
+    ]
+  }
+}

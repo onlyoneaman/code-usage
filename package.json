@@ -1,6 +1,6 @@
 {
   "name": "code-usage",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "Unified usage dashboard for AI coding tools (Claude Code, Codex CLI, OpenCode)",
   "type": "module",
   "bin": {
@@ -8,6 +8,10 @@
   },
   "scripts": {
     "start": "node bin/code-usage.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "build:dashboard": "node scripts/build-dashboard.mjs",
     "sync:litellm": "node scripts/sync-litellm.mjs",
     "build:prod": "npm run build:dashboard && npm run pack:check",
@@ -36,7 +40,9 @@
     "ai",
     "coding",
     "tokens",
-    "cost"
+    "cost",
+    "amp",
+    "pi"
   ],
   "engines": {
     "node": ">=18"
@@ -45,7 +51,9 @@
     "open": "^10.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.2",
     "clean-css": "^5.3.3",
-    "terser": "^5.46.0"
+    "terser": "^5.46.0",
+    "vitest": "^4.0.18"
   }
 }

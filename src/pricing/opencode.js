@@ -1,22 +1,25 @@
 // OpenCode model pricing
 // Chain: 1) ~/.cache/opencode/models.json → 2) LiteLLM → 3) $0
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-import { litellmLookup } from './litellm.js';
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { litellmLookup } from "./litellm.js";
 
 const MODEL_ALIASES = {
-  'gemini-3-pro-high': 'gemini-3-pro-preview',
+  "gemini-3-pro-high": "gemini-3-pro-preview",
 };
 
 let modelsCache = null;
 
 function loadModelsCache() {
   if (modelsCache) return modelsCache;
-  const cachePath = join(homedir(), '.cache', 'opencode', 'models.json');
-  if (!existsSync(cachePath)) { modelsCache = {}; return modelsCache; }
+  const cachePath = join(homedir(), ".cache", "opencode", "models.json");
+  if (!existsSync(cachePath)) {
+    modelsCache = {};
+    return modelsCache;
+  }
   try {
-    const raw = JSON.parse(readFileSync(cachePath, 'utf8'));
+    const raw = JSON.parse(readFileSync(cachePath, "utf8"));
     const flat = {};
     for (const provider of Object.values(raw)) {
       for (const [id, m] of Object.entries(provider.models || {})) {
@@ -24,7 +27,9 @@ function loadModelsCache() {
       }
     }
     modelsCache = flat;
-  } catch { modelsCache = {}; }
+  } catch {
+    modelsCache = {};
+  }
   return modelsCache;
 }
 

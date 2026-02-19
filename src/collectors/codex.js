@@ -1,12 +1,12 @@
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join, basename } from 'node:path';
-import { homedir } from 'node:os';
-import { getCodexPricing } from '../pricing/codex.js';
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
+import { getCodexPricing } from "../pricing/codex.js";
 
 export function collectCodex() {
   const home = homedir();
-  const sessionsDir = join(home, '.codex', 'sessions');
-  const archivedDir = join(home, '.codex', 'archived_sessions');
+  const sessionsDir = join(home, ".codex", "sessions");
+  const archivedDir = join(home, ".codex", "archived_sessions");
 
   const files = [];
   if (existsSync(sessionsDir)) collectJsonlFiles(sessionsDir, files);
@@ -14,9 +14,9 @@ export function collectCodex() {
   files.sort();
 
   // Per-model aggregates
-  const modelAgg = {};   // model → {input, output, cached, reasoning, cost}
+  const modelAgg = {}; // model → {input, output, cached, reasoning, cost}
   // Per-day aggregates
-  const dayAgg = {};     // date → {cost, sessions, messages, models: Set, modelCosts: {}}
+  const dayAgg = {}; // date → {cost, sessions, messages, models: Set, modelCosts: {}}
 
   let totalSessions = 0;
   let totalMessages = 0;
@@ -25,7 +25,7 @@ export function collectCodex() {
 
   for (const fpath of files) {
     const session = parseSession(fpath);
-    if (!session) continue;         // no date → skip
+    if (!session) continue; // no date → skip
     if (!session.hasUsage) continue; // no token data → skip entirely
 
     const { date, model, input, output, cached, reasoning, messages, cwd } = session;
@@ -37,7 +37,8 @@ export function collectCodex() {
     const p = getCodexPricing(model);
     const m = 1e6;
     const uncached = Math.max(0, input - cached);
-    const cost = uncached / m * p.input + cached / m * p.cachedInput + output / m * p.output + reasoning / m * p.reasoning;
+    const cost =
+      (uncached / m) * p.input + (cached / m) * p.cachedInput + (output / m) * p.output + (reasoning / m) * p.reasoning;
 
     // Accumulate into model
     if (!modelAgg[model]) modelAgg[model] = { input: 0, output: 0, cached: 0, reasoning: 0, cost: 0 };
@@ -57,7 +58,7 @@ export function collectCodex() {
 
     // Project aggregation
     if (cwd) {
-      const projName = cwd.split('/').filter(Boolean).pop() || cwd;
+      const projName = cwd.split("/").filter(Boolean).pop() || cwd;
       if (!projAgg[cwd]) projAgg[cwd] = { name: projName, daily: {} };
       if (!projAgg[cwd].daily[date]) projAgg[cwd].daily[date] = { sessions: 0, messages: 0, cost: 0 };
       projAgg[cwd].daily[date].sessions++;
@@ -73,42 +74,49 @@ export function collectCodex() {
     const p = getCodexPricing(id);
     const m = 1e6;
     const uncached = Math.max(0, a.input - a.cached);
-    const iC = uncached / m * p.input;
-    const ciC = a.cached / m * p.cachedInput;
-    const oC = a.output / m * p.output;
-    const rC = a.reasoning / m * p.reasoning;
+    const iC = (uncached / m) * p.input;
+    const ciC = (a.cached / m) * p.cachedInput;
+    const oC = (a.output / m) * p.output;
+    const rC = (a.reasoning / m) * p.reasoning;
     totalCost += a.cost;
     models.push({
       id,
       cost: a.cost,
       details: [
-        { label: 'Input', tokens: uncached, cost: iC },
-        { label: 'Cached', tokens: a.cached, cost: ciC },
-        { label: 'Output', tokens: a.output, cost: oC },
-        { label: 'Reasoning', tokens: a.reasoning, cost: rC },
+        { label: "Input", tokens: uncached, cost: iC },
+        { label: "Cached", tokens: a.cached, cost: ciC },
+        { label: "Output", tokens: a.output, cost: oC },
+        { label: "Reasoning", tokens: a.reasoning, cost: rC },
       ],
     });
   }
 
-  const dailyArr = Object.keys(dayAgg).sort().map(date => ({
-    date,
-    cost: dayAgg[date].cost,
-    sessions: dayAgg[date].sessions,
-    messages: dayAgg[date].messages,
-    models: [...dayAgg[date].models],
-    modelCosts: dayAgg[date].modelCosts,
-  }));
+  const dailyArr = Object.keys(dayAgg)
+    .sort()
+    .map((date) => ({
+      date,
+      cost: dayAgg[date].cost,
+      sessions: dayAgg[date].sessions,
+      messages: dayAgg[date].messages,
+      models: [...dayAgg[date].models],
+      modelCosts: dayAgg[date].modelCosts,
+    }));
 
   // Streak
   const activeDates = new Set(Object.keys(dayAgg));
   let streak = 0;
   const now = new Date();
   const check = new Date(now);
-  while (activeDates.has(localDateStr(check))) { streak++; check.setDate(check.getDate() - 1); }
+  while (activeDates.has(localDateStr(check))) {
+    streak++;
+    check.setDate(check.getDate() - 1);
+  }
 
   let totalOutputTokens = 0;
   let totalTokens = 0;
-  let totalInput = 0, totalCached = 0, totalReasoning = 0;
+  let totalInput = 0,
+    totalCached = 0,
+    totalReasoning = 0;
   for (const a of Object.values(modelAgg)) {
     totalInput += a.input;
     totalOutputTokens += a.output;
@@ -118,19 +126,24 @@ export function collectCodex() {
   }
 
   // Build projects array
-  const projects = Object.entries(projAgg).map(([path, p]) => {
-    const daily = Object.entries(p.daily).sort(([a],[b]) => a.localeCompare(b)).map(([date, d]) => ({ date, sessions: d.sessions, messages: d.messages, cost: d.cost }));
-    const sessions = daily.reduce((s, d) => s + d.sessions, 0);
-    const messages = daily.reduce((s, d) => s + d.messages, 0);
-    const cost = daily.reduce((s, d) => s + d.cost, 0);
-    return { name: p.name, path, sessions, messages, cost, daily };
-  }).sort((a, b) => b.cost - a.cost);
+  const projects = Object.entries(projAgg)
+    .map(([path, p]) => {
+      const daily = Object.entries(p.daily)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, d]) => ({ date, sessions: d.sessions, messages: d.messages, cost: d.cost }));
+      const sessions = daily.reduce((s, d) => s + d.sessions, 0);
+      const messages = daily.reduce((s, d) => s + d.messages, 0);
+      const cost = daily.reduce((s, d) => s + d.cost, 0);
+      return { name: p.name, path, sessions, messages, cost, daily };
+    })
+    .sort((a, b) => b.cost - a.cost);
 
   return {
-    provider: 'codex',
-    badge: 'Codex Pro',
-    accent: '#7385FE',
-    pricingNote: 'Pricing (per MTok): gpt-5.3-codex: In $1.75, Out $14, Cached $0.175 | gpt-5.1-codex: In $1.25, Out $10, Cached $0.125. If on Codex Pro subscription, you pay a flat monthly rate.',
+    provider: "codex",
+    badge: "Codex Pro",
+    accent: "#7385FE",
+    pricingNote:
+      "Pricing (per MTok): gpt-5.3-codex: In $1.75, Out $14, Cached $0.175 | gpt-5.1-codex: In $1.25, Out $10, Cached $0.125. If on Codex Pro subscription, you pay a flat monthly rate.",
     summary: {
       totalCost,
       totalSessions,
@@ -150,29 +163,44 @@ export function collectCodex() {
 
 function parseSession(fpath) {
   let lines;
-  try { lines = readFileSync(fpath, 'utf8').split('\n'); } catch { return null; }
+  try {
+    lines = readFileSync(fpath, "utf8").split("\n");
+  } catch {
+    return null;
+  }
 
-  let date = null, model = null, messages = 0, hasUsage = false, cwd = null;
-  let input = 0, output = 0, cached = 0, reasoning = 0;
+  let date = null,
+    model = null,
+    messages = 0,
+    hasUsage = false,
+    cwd = null;
+  let input = 0,
+    output = 0,
+    cached = 0,
+    reasoning = 0;
 
   for (const line of lines) {
     if (!line.trim()) continue;
     let entry;
-    try { entry = JSON.parse(line); } catch { continue; }
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
 
     const type = entry.type;
     const payload = entry.payload || {};
 
-    if (type === 'session_meta') {
-      const ts = payload.timestamp || entry.timestamp || '';
+    if (type === "session_meta") {
+      const ts = payload.timestamp || entry.timestamp || "";
       if (ts) date = ts.slice(0, 10);
       model = payload.model || payload.collaboration_mode?.settings?.model || null;
       if (payload.cwd) cwd = payload.cwd;
     }
 
-    if (type === 'event_msg' && payload && typeof payload === 'object') {
+    if (type === "event_msg" && payload && typeof payload === "object") {
       const info = payload.info;
-      if (info && typeof info === 'object') {
+      if (info && typeof info === "object") {
         const tu = info.total_token_usage;
         if (tu) {
           hasUsage = true;
@@ -186,7 +214,7 @@ function parseSession(fpath) {
       if (payload.collaboration_mode?.settings?.model) model = payload.collaboration_mode.settings.model;
     }
 
-    if (type === 'response_item' && payload?.role === 'user') messages++;
+    if (type === "response_item" && payload?.role === "user") messages++;
   }
 
   // Fallback date from filename
@@ -195,15 +223,15 @@ function parseSession(fpath) {
     if (match) date = match[1];
   }
   if (!date) return null;
-  if (!model) model = 'gpt-5.3-codex';
+  if (!model) model = "gpt-5.3-codex";
 
   return { date, model, input, output, cached, reasoning, messages, hasUsage, cwd };
 }
 
 function localDateStr(d) {
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
@@ -211,8 +239,10 @@ function collectJsonlFiles(dir, out) {
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
-      if (entry.isFile() && entry.name.endsWith('.jsonl')) out.push(full);
+      if (entry.isFile() && entry.name.endsWith(".jsonl")) out.push(full);
       else if (entry.isDirectory()) collectJsonlFiles(full, out);
     }
-  } catch { /* skip unreadable */ }
+  } catch {
+    /* skip unreadable */
+  }
 }

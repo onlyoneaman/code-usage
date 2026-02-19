@@ -1,145 +1,121 @@
-# code-usage
+<div align="center">
+  <h1>code-usage</h1>
+  <p><strong>One command. Every AI coding tool. One dashboard.</strong></p>
 
-[![npm version](https://img.shields.io/npm/v/code-usage)](https://www.npmjs.com/package/code-usage)
-[![npm downloads](https://img.shields.io/npm/dm/code-usage)](https://www.npmjs.com/package/code-usage)
-[![license](https://img.shields.io/npm/l/code-usage)](https://github.com/onlyoneaman/code-usage/blob/main/LICENSE)
-[![node](https://img.shields.io/node/v/code-usage)](https://nodejs.org)
+  <a href="https://www.npmjs.com/package/code-usage"><img src="https://img.shields.io/npm/v/code-usage?color=blue" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/code-usage"><img src="https://img.shields.io/npm/dm/code-usage" alt="npm downloads" /></a>
+  <a href="https://github.com/onlyoneaman/code-usage/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/code-usage" alt="license" /></a>
+</div>
 
-See how much your AI coding actually costs.
+<br />
 
-`code-usage` is a local CLI that analyzes and compares usage across AI coding agents:
+<div align="center">
+  <img src="screenshot.png" alt="code-usage dashboard" width="800" />
+</div>
 
-- **Claude Code**
-- **Codex CLI**
-- **OpenCode**
+<br />
 
-It builds a single, clean HTML dashboard showing:
+```bash
+npx code-usage
+```
 
-- Token usage
-- Sessions & messages
-- Daily & weekly trends
-- Per-model cost estimates
-- Streaks
-- Combined + per-agent views
+See how much your AI coding actually costs — across **all** your tools, in one place.
 
-Everything runs locally. No APIs. No tracking. No uploads.
+`code-usage` reads local session files, calculates API-equivalent costs, and builds a self-contained HTML dashboard. No accounts, no APIs, no data leaves your machine.
 
-If you use multiple AI coding tools, this answers one question:
+## Why code-usage?
 
-**Where is my time and money actually going?**
+Most usage trackers cover a single tool. If you use Claude Code *and* Codex *and* Amp, you need separate tools for each.
 
-![code-usage dashboard](screenshot.png)
+`code-usage` gives you **one unified dashboard** with combined views, stacked charts, and side-by-side comparisons — for every AI coding agent you use.
 
-## Why This Exists
+## Supported Tools
 
-When you experiment with multiple coding agents, it's hard to know:
+| Tool | Status |
+|------|--------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Supported |
+| [Codex CLI](https://github.com/openai/codex) | Supported |
+| [OpenCode](https://opencode.ai) | Supported |
+| [Amp](https://ampcode.com) | Supported |
+| [Pi-Agent](https://github.com/anthropics/pi-agent) | Supported |
 
-- Which one you use more
-- Which models cost the most
-- Whether you're burning tokens unintentionally
-- How usage trends week over week
+Only tools with local data appear in the dashboard — no empty tabs, no clutter.
 
-`code-usage` gives you clarity in seconds.
+## Features
 
-Think of it as:
+- **Combined + per-agent views** — stacked charts showing cost breakdown across all your tools
+- **Per-model costs** — see exactly which models eat your budget (Opus 4.6 vs Sonnet 4.5 vs GPT-5.3)
+- **Per-project breakdown** — donut chart with cost/session data per project
+- **Daily & weekly trends** — spot patterns in your usage over time
+- **Date range filtering** — This Week, This Month, Last 30/90 Days, All Time
+- **Dark mode** — System / Light / Dark theme toggle, persisted across sessions
+- **Token breakdown** — input, output, cache read/write, reasoning tokens with tooltips
+- **Usage streaks** — see your consecutive days of AI coding activity
+- **JSON export** — `--json` flag for scripting and automation
+- **100% offline** — everything runs locally, nothing is uploaded
 
-> GitHub contributions graph — but for AI coding.
+## Quick Start
 
-## Install
+```bash
+npx code-usage
+```
+
+Or install globally:
 
 ```bash
 npm install -g code-usage
 ```
 
-## Run
+That's it. If you have session data from any supported tool, the dashboard opens automatically.
+
+## CLI Options
 
 ```bash
-code-usage
+code-usage                  # Open dashboard in browser
+code-usage --no-open        # Generate HTML without opening
+code-usage --json           # Print structured JSON to stdout
+code-usage --range 30d      # Filter: 7d, 30d, 90d, all
+code-usage -v               # Version
+code-usage -h               # Help
 ```
 
-Opens a local dashboard in your browser.
-
-If it doesn't auto-open, the CLI prints the local file path.
-
-## What You See
-
-- Combined **All / Claude / Codex / OpenCode** views
-- Daily + weekly usage charts
-- Per-model cost breakdown
-- Per-project usage donut chart
-- Sessions, messages, output tokens
-- Usage streak tracking
-- Local JSON snapshots for debugging
-
-Generated files:
+## Output
 
 ```
-~/.code-usage/current/code-usage-dashboard.html
-~/.code-usage/current/openusage-data.json
+~/.code-usage/current/code-usage-dashboard.html   # Interactive dashboard
+~/.code-usage/current/openusage-data.json          # Raw data snapshot
 ```
+
+## How It Works
+
+1. Reads local session files from each tool's standard data directory
+2. Calculates token counts and API-equivalent cost estimates per model
+3. Aggregates by day, week, project, and model
+4. Builds a single self-contained HTML file with all data inlined
+5. Opens it in your browser
+
+Pricing is based on published API rates. Fallback pricing powered by [LiteLLM](https://github.com/BerriAI/litellm). If you're on a subscription plan (Claude Max, Codex Pro), actual billed cost may differ.
 
 ## Privacy
 
-All processing is local.
-
-`code-usage` only reads standard local session files:
-
-Claude:
-
-```
-~/.config/claude/projects/**/*.jsonl
-~/.claude/projects/**/*.jsonl
-~/.claude/usage-data/session-meta/*.json
-```
-
-Codex:
-
-```
-~/.codex/sessions/**/*.jsonl
-~/.codex/archived_sessions/**/*.jsonl
-```
-
-OpenCode:
-
-```
-~/.local/share/opencode/opencode.db (SQLite)
-~/.cache/opencode/models.json (pricing)
-```
-
-No `.env` required.
-No data leaves your machine.
-
-## Cost Estimates
-
-Costs are API-equivalent estimates based on pricing tables:
-
-- `src/pricing/claude.js`
-- `src/pricing/codex.js`
-- `src/pricing/opencode.js` (dynamic from `~/.cache/opencode/models.json`)
-
-Fallback pricing powered by [LiteLLM](https://github.com/BerriAI/litellm).
-
-If you're on subscription plans (Claude Max, Codex Pro), billed cost may differ.
-
-## Requirements
-
-- Node.js `>=18`
-- Local Claude, Codex, and/or OpenCode session files available
+All data stays on your machine. `code-usage` only reads standard local session files — no `.env`, no API keys, no network calls.
 
 ## Development
 
 ```bash
 npm install
-npm run pack:check
-node bin/code-usage.js
+npm run lint              # Biome
+npm test                  # Vitest (53 tests)
+npm run build:dashboard   # Rebuild template
+node bin/code-usage.js    # Run locally
 ```
 
 ## Links
 
-- npm: https://www.npmjs.com/package/code-usage
-- GitHub: https://github.com/onlyoneaman/code-usage
-- Author: https://x.com/onlyoneaman
+- [npm](https://www.npmjs.com/package/code-usage)
+- [GitHub](https://github.com/onlyoneaman/code-usage)
+- [Author](https://x.com/onlyoneaman)
 
 ## License
 
-MIT
+[MIT](LICENSE) - [Aman](https://x.com/onlyoneaman)

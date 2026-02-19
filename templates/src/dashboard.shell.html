@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="system">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,7 +17,14 @@
         <div class="sub">See how much your AI coding actually costs.</div>
       </div>
       <div class="header-meta">
-        <div class="gen-time" id="gen-time"></div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+          <div class="gen-time" id="gen-time"></div>
+          <div class="theme-toggle" id="theme-toggle">
+            <button type="button" class="theme-btn active" data-theme="system" title="System">&#9788;</button>
+            <button type="button" class="theme-btn" data-theme="light" title="Light">&#9728;</button>
+            <button type="button" class="theme-btn" data-theme="dark" title="Dark">&#9790;</button>
+          </div>
+        </div>
         <div class="header-links">
           <a href="https://www.npmjs.com/package/code-usage" target="_blank" rel="noopener">code-usage</a>
           <span class="link-dot">&middot;</span>
@@ -41,6 +48,8 @@
   <div id="panel-claude" class="tab-panel"></div>
   <div id="panel-codex" class="tab-panel"></div>
   <div id="panel-opencode" class="tab-panel"></div>
+  <div id="panel-amp" class="tab-panel"></div>
+  <div id="panel-pi" class="tab-panel"></div>
   <div class="footer">
     <p>Run <code>code-usage</code> to generate a fresh report.</p>
     <p id="footer-meta"></p>

@@ -1,0 +1,5 @@
+{"type":"session_meta","payload":{"timestamp":"2025-07-10T14:00:00.000Z","model":"gpt-5.1-codex","cwd":"/home/user/project"}}
+{"type":"response_item","payload":{"role":"user"}}
+{"type":"event_msg","payload":{"info":{"total_token_usage":{"input_tokens":500,"output_tokens":200,"cached_input_tokens":100,"reasoning_output_tokens":50},"model":"gpt-5.1-codex"}}}
+{"type":"response_item","payload":{"role":"user"}}
+{"type":"event_msg","payload":{"info":{"total_token_usage":{"input_tokens":1200,"output_tokens":600,"cached_input_tokens":300,"reasoning_output_tokens":100},"model":"gpt-5.1-codex"}}}

@@ -1,31 +1,26 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { getClaudePricing } from "../pricing/claude.js";
+import { getPiPricing } from "../pricing/pi.js";
 
-export function collectClaude() {
-  const home = homedir();
-  const claudeRoots = getClaudeRoots(home);
+export function collectPi(basePath) {
+  const sessionsDir = basePath || getPiSessionsDir();
   const files = [];
-  for (const root of claudeRoots) {
-    const projectsDir = join(root, "projects");
-    if (existsSync(projectsDir)) collectJsonlFiles(projectsDir, files);
-  }
+  if (sessionsDir && existsSync(sessionsDir)) collectJsonlFiles(sessionsDir, files);
   files.sort();
 
-  // Per-model and per-day aggregation from raw JSONL events (ccusage-like)
   const modelAgg = {}; // model -> { input, output, cacheRead, cacheWrite, cost }
   const dayAgg = {}; // date -> { cost, sessions:Set, messages, models:Set, modelCosts:{} }
-  const projAgg = {}; // path -> { name, daily: { date -> {sessions:Set, messages, cost} } }
+  const projAgg = {}; // project -> { name, daily: { date -> {sessions:Set, messages, cost} } }
 
-  const seen = new Set(); // dedupe by message.id + requestId
+  const seen = new Set(); // dedupe by timestamp:totalTokens
   const allSessions = new Set();
   let totalMessages = 0;
   let firstDate = null;
 
   for (const fpath of files) {
-    const fallbackSessionId = basename(fpath, ".jsonl");
-    const fallbackProjectPath = extractProjectPathFromFile(fpath);
+    const sessionId = extractSessionId(fpath);
+    const project = extractProject(fpath, sessionsDir);
 
     let lines;
     try {
@@ -50,56 +45,55 @@ export function collectClaude() {
       if (!firstDate || date < firstDate) firstDate = date;
 
       const msg = entry.message || {};
-      const reqId = entry.requestId || null;
-      const msgId = msg.id || null;
-      if (msgId && reqId) {
-        const key = `${msgId}:${reqId}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-      }
-
-      const sessionId = entry.sessionId || fallbackSessionId;
-      const projectPath = entry.cwd || fallbackProjectPath || "";
-      const sessionKey = `${projectPath || "<unknown>"}::${sessionId}`;
+      const sessionKey = `${project || "<unknown>"}::${sessionId}`;
 
       if (!dayAgg[date])
         dayAgg[date] = { cost: 0, sessions: new Set(), messages: 0, models: new Set(), modelCosts: {} };
       dayAgg[date].sessions.add(sessionKey);
       allSessions.add(sessionKey);
 
-      if (projectPath) {
-        const projName = projectPath.split("/").filter(Boolean).pop() || projectPath;
-        if (!projAgg[projectPath]) projAgg[projectPath] = { name: projName, daily: {} };
-        if (!projAgg[projectPath].daily[date])
-          projAgg[projectPath].daily[date] = { sessions: new Set(), messages: 0, cost: 0 };
-        projAgg[projectPath].daily[date].sessions.add(sessionKey);
+      if (project) {
+        if (!projAgg[project]) projAgg[project] = { name: project, daily: {} };
+        if (!projAgg[project].daily[date]) projAgg[project].daily[date] = { sessions: new Set(), messages: 0, cost: 0 };
+        projAgg[project].daily[date].sessions.add(sessionKey);
       }
 
-      if (entry.type === "user") {
+      // Count user messages
+      if (msg.role === "user") {
         totalMessages++;
         dayAgg[date].messages++;
-        if (projectPath) projAgg[projectPath].daily[date].messages++;
+        if (project) projAgg[project].daily[date].messages++;
       }
 
+      // Only process usage from assistant entries
+      const type = entry.type;
+      if (type != null && type !== "message") continue;
+      if (msg.role !== "assistant") continue;
+
       const usage = msg.usage || null;
-      if (!usage || typeof usage !== "object") continue;
+      if (!usage || typeof usage.input !== "number" || typeof usage.output !== "number") continue;
 
-      const input = usage.input_tokens || 0;
-      const output = usage.output_tokens || 0;
-      const cacheRead = usage.cache_read_input_tokens || 0;
-      const cacheWrite = usage.cache_creation_input_tokens || 0;
+      const input = usage.input || 0;
+      const output = usage.output || 0;
+      const cacheRead = usage.cacheRead || 0;
+      const cacheWrite = usage.cacheWrite || 0;
+      const totalTokens = input + output + cacheRead + cacheWrite;
       const model = msg.model || "<unknown>";
-      const tokenSum = input + output + cacheRead + cacheWrite;
 
-      // Claude emits synthetic assistant rows (rate-limit/no-op) with zero usage.
-      // Keep session/message accounting, but exclude them from model/cost stats.
-      if (model === "<synthetic>" && tokenSum === 0) continue;
+      // Deduplicate by timestamp:totalTokens
+      const dedupeKey = `${ts}:${totalTokens}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
 
-      let cost = Number.isFinite(entry.costUSD) ? entry.costUSD : null;
+      // Cost: prefer pre-calculated, fall back to pricing lookup
+      let cost = null;
+      if (usage.cost && typeof usage.cost.total === "number" && Number.isFinite(usage.cost.total)) {
+        cost = usage.cost.total;
+      }
       if (cost === null) {
         if (model === "<unknown>") cost = 0;
         else {
-          const p = getClaudePricing(model);
+          const p = getPiPricing(model);
           const m = 1e6;
           cost =
             (input / m) * p.input +
@@ -120,7 +114,7 @@ export function collectClaude() {
       dayAgg[date].models.add(model);
       dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
 
-      if (projectPath) projAgg[projectPath].daily[date].cost += cost;
+      if (project) projAgg[project].daily[date].cost += cost;
     }
   }
 
@@ -128,7 +122,7 @@ export function collectClaude() {
   let totalCost = 0;
   const models = [];
   for (const [id, a] of Object.entries(modelAgg)) {
-    const p = id === "<unknown>" ? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } : getClaudePricing(id);
+    const p = id === "<unknown>" ? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } : getPiPricing(id);
     const m = 1e6;
     const iC = (a.input / m) * p.input;
     const oC = (a.output / m) * p.output;
@@ -197,14 +191,11 @@ export function collectClaude() {
     })
     .sort((a, b) => b.cost - a.cost);
 
-  const extra = collectSessionMetaExtras(claudeRoots);
-
   return {
-    provider: "claude",
-    badge: "Claude Max",
-    accent: "#D37356",
-    pricingNote:
-      "Pricing (per MTok): Opus 4.5/4.6: In $5, Out $25, CR $0.50, CW $6.25 | Sonnet 4.5: In $3, Out $15, CR $0.30, CW $3.75 | Haiku 4.5: In $1, Out $5, CR $0.10, CW $1.25. If on Claude Max, you pay a flat monthly rate.",
+    provider: "pi",
+    badge: "Pi-Agent",
+    accent: "#6C5CE7",
+    pricingNote: "Costs from Pi-Agent session data. LiteLLM fallback for missing cost fields.",
     summary: {
       totalCost,
       totalSessions: allSessions.size,
@@ -223,8 +214,32 @@ export function collectClaude() {
     models,
     daily: dailyArr,
     projects,
-    extra,
+    extra: null,
   };
+}
+
+function getPiSessionsDir() {
+  const env = (process.env.PI_AGENT_DIR || "").trim();
+  if (env) {
+    if (existsSync(env)) return env;
+    return null;
+  }
+  const defaultPath = join(homedir(), ".pi", "agent", "sessions");
+  if (existsSync(defaultPath)) return defaultPath;
+  return null;
+}
+
+function extractSessionId(fpath) {
+  const filename = basename(fpath, ".jsonl");
+  const idx = filename.indexOf("_");
+  return idx !== -1 ? filename.slice(idx + 1) : filename;
+}
+
+function extractProject(fpath, sessionsDir) {
+  // Project is the first directory under the sessions base path
+  const rel = fpath.slice(sessionsDir.length).replace(/^[/\\]+/, "");
+  const parts = rel.split(/[/\\]/);
+  return parts.length > 1 ? parts[0] : "";
 }
 
 function localDateStr(d) {
@@ -232,29 +247,6 @@ function localDateStr(d) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function getClaudeRoots(home) {
-  const env = (process.env.CLAUDE_CONFIG_DIR || "").trim();
-  const roots = [];
-  const seen = new Set();
-
-  const addRoot = (root) => {
-    if (!root) return;
-    if (seen.has(root)) return;
-    if (!existsSync(join(root, "projects"))) return;
-    seen.add(root);
-    roots.push(root);
-  };
-
-  if (env) {
-    for (const raw of env.split(",")) addRoot(raw.trim());
-    return roots;
-  }
-
-  addRoot(join(home, ".config", "claude"));
-  addRoot(join(home, ".claude"));
-  return roots;
 }
 
 function collectJsonlFiles(dir, out) {
@@ -267,45 +259,4 @@ function collectJsonlFiles(dir, out) {
   } catch {
     /* skip unreadable */
   }
-}
-
-function extractProjectPathFromFile(fpath) {
-  const normalized = fpath.replace(/\\/g, "/");
-  const marker = "/projects/";
-  const idx = normalized.lastIndexOf(marker);
-  if (idx === -1) return "";
-  const rest = normalized.slice(idx + marker.length);
-  const parts = rest.split("/").filter(Boolean);
-  if (parts.length === 0) return "";
-  return parts[0];
-}
-
-function collectSessionMetaExtras(claudeRoots) {
-  let linesAdded = 0;
-  let linesRemoved = 0;
-  let filesModified = 0;
-
-  for (const root of claudeRoots) {
-    const dir = join(root, "usage-data", "session-meta");
-    if (!existsSync(dir)) continue;
-    let files;
-    try {
-      files = readdirSync(dir);
-    } catch {
-      continue;
-    }
-    for (const file of files) {
-      if (!file.endsWith(".json")) continue;
-      try {
-        const s = JSON.parse(readFileSync(join(dir, file), "utf8"));
-        linesAdded += s.lines_added || 0;
-        linesRemoved += s.lines_removed || 0;
-        filesModified += s.files_modified || 0;
-      } catch {
-        /* skip */
-      }
-    }
-  }
-
-  return { linesAdded, linesRemoved, filesModified };
 }
