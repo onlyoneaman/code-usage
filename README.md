@@ -76,6 +76,10 @@ code-usage                  # Open dashboard in browser
 code-usage --no-open        # Generate HTML without opening
 code-usage --json           # Print structured JSON to stdout
 code-usage --range 30d      # Filter: 7d, 30d, 90d, all
+code-usage --providers codex,claude  # Run only selected providers
+code-usage --timeout-ms 45000         # Per-provider timeout (ms)
+code-usage --quiet          # Suppress progress logs
+code-usage --verbose        # Print collector diagnostics
 code-usage -v               # Version
 code-usage -h               # Help
 ```

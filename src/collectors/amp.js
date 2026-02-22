@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getAmpPricing } from "../pricing/amp.js";
+import { computeCurrentStreakFromDates, normalizeCutoffDate } from "./utils.js";
 
 export function collectAmp(basePath, options = {}) {
   if (basePath && typeof basePath === "object" && !Array.isArray(basePath)) {
@@ -151,13 +152,7 @@ export function collectAmp(basePath, options = {}) {
 
   // Streak
   const activeDates = new Set(dailyArr.filter((d) => d.sessions > 0).map((d) => d.date));
-  let streak = 0;
-  const now = new Date();
-  const check = new Date(now);
-  while (activeDates.has(localDateStr(check))) {
-    streak++;
-    check.setDate(check.getDate() - 1);
-  }
+  const streak = computeCurrentStreakFromDates(activeDates);
 
   // Token totals
   let totalInputTokens = 0,
@@ -211,11 +206,6 @@ export function collectAmp(basePath, options = {}) {
     projects,
     extra: null,
   };
-}
-
-function normalizeCutoffDate(value) {
-  if (typeof value !== "string") return null;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 /**
@@ -320,11 +310,4 @@ function collectJsonFiles(dir, out) {
   } catch {
     /* skip unreadable */
   }
-}
-
-function localDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }

@@ -3,6 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getOpencodePricing } from "../pricing/opencode.js";
+import { computeCurrentStreakFromDates, normalizeCutoffDate } from "./utils.js";
 
 export function collectOpencode(options = {}) {
   const cutoffDate = normalizeCutoffDate(options.cutoffDate);
@@ -177,13 +178,7 @@ export function collectOpencode(options = {}) {
 
   // Streak
   const activeDates = new Set(Object.keys(dayAgg));
-  let streak = 0;
-  const now = new Date();
-  const check = new Date(now);
-  while (activeDates.has(localDateStr(check))) {
-    streak++;
-    check.setDate(check.getDate() - 1);
-  }
+  const streak = computeCurrentStreakFromDates(activeDates);
 
   let totalOutputTokens = 0,
     totalTokens = 0,
@@ -292,18 +287,6 @@ function queryDb(dbPath) {
   } catch {
     return { sessions: [], messages: [], projects: [] };
   }
-}
-
-function localDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function normalizeCutoffDate(value) {
-  if (typeof value !== "string") return null;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 function dateFromIsoLike(value) {

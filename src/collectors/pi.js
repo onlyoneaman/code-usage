@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getPiPricing } from "../pricing/pi.js";
+import { computeCurrentStreakFromDates, normalizeCutoffDate } from "./utils.js";
 
 export function collectPi(basePath, options = {}) {
   if (basePath && typeof basePath === "object" && !Array.isArray(basePath)) {
@@ -162,13 +163,7 @@ export function collectPi(basePath, options = {}) {
 
   // Streak
   const activeDates = new Set(dailyArr.filter((d) => d.sessions > 0).map((d) => d.date));
-  let streak = 0;
-  const now = new Date();
-  const check = new Date(now);
-  while (activeDates.has(localDateStr(check))) {
-    streak++;
-    check.setDate(check.getDate() - 1);
-  }
+  const streak = computeCurrentStreakFromDates(activeDates);
 
   // Token totals
   let totalInputTokens = 0,
@@ -248,13 +243,6 @@ function extractProject(fpath, sessionsDir) {
   return parts.length > 1 ? parts[0] : "";
 }
 
-function localDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 function collectJsonlFiles(dir, out) {
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -265,9 +253,4 @@ function collectJsonlFiles(dir, out) {
   } catch {
     /* skip unreadable */
   }
-}
-
-function normalizeCutoffDate(value) {
-  if (typeof value !== "string") return null;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }

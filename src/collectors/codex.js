@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getCodexPricing } from "../pricing/codex.js";
+import { computeCurrentStreakFromDates, normalizeCutoffDate } from "./utils.js";
 
 export function collectCodex(options = {}) {
   const cutoffDate = normalizeCutoffDate(options.cutoffDate);
@@ -106,13 +107,7 @@ export function collectCodex(options = {}) {
 
   // Streak
   const activeDates = new Set(Object.keys(dayAgg));
-  let streak = 0;
-  const now = new Date();
-  const check = new Date(now);
-  while (activeDates.has(localDateStr(check))) {
-    streak++;
-    check.setDate(check.getDate() - 1);
-  }
+  const streak = computeCurrentStreakFromDates(activeDates);
 
   let totalOutputTokens = 0;
   let totalTokens = 0;
@@ -228,18 +223,6 @@ function parseSession(fpath) {
   if (!model) model = "gpt-5.3-codex";
 
   return { date, model, input, output, cached, reasoning, messages, hasUsage, cwd };
-}
-
-function localDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function normalizeCutoffDate(value) {
-  if (typeof value !== "string") return null;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 function collectJsonlFiles(dir, out) {
