@@ -51,6 +51,7 @@ Only tools with local data appear in the dashboard — no empty tabs, no clutter
 - **Dark mode** — System / Light / Dark theme toggle, persisted across sessions
 - **Token breakdown** — input, output, cache read/write, reasoning tokens with tooltips
 - **Usage streaks** — see your consecutive days of AI coding activity
+- **Parallel collection** — gathers usage from all detected agents concurrently
 - **JSON export** — `--json` flag for scripting and automation
 - **100% offline** — everything runs locally, nothing is uploaded
 
@@ -88,7 +89,7 @@ code-usage -h               # Help
 
 ## How It Works
 
-1. Reads local session files from each tool's standard data directory
+1. Reads local session files from each tool's standard data directory (in parallel)
 2. Calculates token counts and API-equivalent cost estimates per model
 3. Aggregates by day, week, project, and model
 4. Builds a single self-contained HTML file with all data inlined

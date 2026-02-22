@@ -4,11 +4,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectAmp } from "../src/collectors/amp.js";
-import { collectClaude } from "../src/collectors/claude.js";
-import { collectCodex } from "../src/collectors/codex.js";
-import { collectOpencode } from "../src/collectors/opencode.js";
-import { collectPi } from "../src/collectors/pi.js";
+import { Worker } from "node:worker_threads";
 import { APP_CONFIG } from "../src/config.js";
 import { buildAndOpen } from "../src/dashboard.js";
 
@@ -83,7 +79,15 @@ const hasAmp = existsSync(ampDataDir) && findJson(ampDataDir);
 const piDataDir = process.env.PI_AGENT_DIR || join(home, ".pi", "agent", "sessions");
 const hasPi = existsSync(piDataDir) && findJsonl(piDataDir);
 
-if (!hasClaude && !hasCodex && !hasOpencode && !hasAmp && !hasPi) {
+const providerStates = [
+  { key: "claude", has: hasClaude, label: "Claude" },
+  { key: "codex", has: hasCodex, label: "Codex" },
+  { key: "opencode", has: hasOpencode, label: "OpenCode" },
+  { key: "amp", has: hasAmp, label: "Amp" },
+  { key: "pi", has: hasPi, label: "Pi-Agent" },
+];
+
+if (providerStates.every((provider) => !provider.has)) {
   console.log("No usage data found for any supported AI coding tool.\n");
   console.log("Supported tools:");
   console.log("  Claude Code:  https://code.claude.com/docs/en/overview");
@@ -99,40 +103,32 @@ if (!hasClaude && !hasCodex && !hasOpencode && !hasAmp && !hasPi) {
 // In --json mode, send progress to stderr so stdout is clean JSON
 const log = flags.json ? process.stderr : process.stdout;
 
-let claudeData = null;
-if (hasClaude) {
-  log.write("Collecting Claude data... ");
-  claudeData = collectClaude();
-  log.write(`${claudeData.summary.totalSessions} sessions\n`);
+for (const provider of providerStates) {
+  if (!provider.has) {
+    log.write(`Skipping ${provider.label} data (no local data found)\n`);
+  }
 }
 
-let codexData = null;
-if (hasCodex) {
-  log.write("Collecting Codex data...  ");
-  codexData = collectCodex();
-  log.write(`${codexData.summary.totalSessions} sessions\n`);
+const availableCollectors = providerStates.filter((collector) => collector.has);
+
+for (const collector of availableCollectors) {
+  log.write(`Collecting ${collector.label} data...\n`);
 }
 
-let opencodeData = null;
-if (hasOpencode) {
-  log.write("Collecting OpenCode data... ");
-  opencodeData = collectOpencode();
-  log.write(`${opencodeData.summary.totalSessions} sessions\n`);
-}
+const collectedPairs = await Promise.all(
+  availableCollectors.map(async (collector) => {
+    const data = await collectProviderInWorker(collector.key);
+    log.write(`${collector.label}: ${data.summary.totalSessions} sessions\n`);
+    return [collector.key, data];
+  }),
+);
+const collectedData = Object.fromEntries(collectedPairs);
 
-let ampData = null;
-if (hasAmp) {
-  log.write("Collecting Amp data...    ");
-  ampData = collectAmp();
-  log.write(`${ampData.summary.totalSessions} sessions\n`);
-}
-
-let piData = null;
-if (hasPi) {
-  log.write("Collecting Pi-Agent data... ");
-  piData = collectPi();
-  log.write(`${piData.summary.totalSessions} sessions\n`);
-}
+let claudeData = collectedData.claude || null;
+let codexData = collectedData.codex || null;
+let opencodeData = collectedData.opencode || null;
+let ampData = collectedData.amp || null;
+let piData = collectedData.pi || null;
 
 // --- Apply range filter ---
 if (flags.range && flags.range !== "all") {
@@ -150,14 +146,7 @@ if (flags.range && flags.range !== "all") {
 }
 
 // --- Determine default tab ---
-const providers = [
-  { key: "claude", has: hasClaude },
-  { key: "codex", has: hasCodex },
-  { key: "opencode", has: hasOpencode },
-  { key: "amp", has: hasAmp },
-  { key: "pi", has: hasPi },
-];
-const activeProviders = providers.filter((p) => p.has);
+const activeProviders = providerStates.filter((provider) => provider.has);
 let defaultTab = "all";
 if (activeProviders.length === 1) {
   defaultTab = activeProviders[0].key;
@@ -237,6 +226,35 @@ function hasClaudeJsonlData(homeDir) {
     if (existsSync(projectsDir) && findJsonl(projectsDir)) return true;
   }
   return false;
+}
+
+function collectProviderInWorker(provider) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const worker = new Worker(new URL("../src/collectors/worker.js", import.meta.url), {
+      type: "module",
+      workerData: { provider },
+    });
+
+    worker.once("message", (message) => {
+      if (settled) return;
+      settled = true;
+      if (message?.ok) resolve(message.data);
+      else reject(new Error(message?.error || `Collector failed for ${provider}`));
+    });
+
+    worker.once("error", (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
+
+    worker.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`Collector worker exited with code ${code} for ${provider}`));
+    });
+  });
 }
 
 function filterByRange(data, cutoffStr) {
