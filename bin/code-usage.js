@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,83 +59,56 @@ const appMeta = {
   assetBase: join(__dirname, "..", "templates", "assets"),
 };
 
-// --- Detect available providers ---
-const hasClaude = hasClaudeJsonlData(home);
-
-let hasCodex = false;
-const codexDirs = [join(home, ".codex", "sessions"), join(home, ".codex", "archived_sessions")];
-for (const d of codexDirs) {
-  if (existsSync(d) && findJsonl(d)) {
-    hasCodex = true;
-    break;
-  }
-}
-
-const hasOpencode = existsSync(join(home, ".local", "share", "opencode", "opencode.db"));
-
-const ampDataDir = process.env.AMP_DATA_DIR || join(home, ".local", "share", "amp", "threads");
-const hasAmp = existsSync(ampDataDir) && findJson(ampDataDir);
-
-const piDataDir = process.env.PI_AGENT_DIR || join(home, ".pi", "agent", "sessions");
-const hasPi = existsSync(piDataDir) && findJsonl(piDataDir);
-
-const providerStates = [
-  { key: "claude", has: hasClaude, label: "Claude" },
-  { key: "codex", has: hasCodex, label: "Codex" },
-  { key: "opencode", has: hasOpencode, label: "OpenCode" },
-  { key: "amp", has: hasAmp, label: "Amp" },
-  { key: "pi", has: hasPi, label: "Pi-Agent" },
+const providers = [
+  { key: "claude", label: "Claude" },
+  { key: "codex", label: "Codex" },
+  { key: "opencode", label: "OpenCode" },
+  { key: "amp", label: "Amp" },
+  { key: "pi", label: "Pi-Agent" },
 ];
-
-if (providerStates.every((provider) => !provider.has)) {
-  console.log("No usage data found for any supported AI coding tool.\n");
-  console.log("Supported tools:");
-  console.log("  Claude Code:  https://code.claude.com/docs/en/overview");
-  console.log("  Codex CLI:    https://developers.openai.com/codex/cli/");
-  console.log("  OpenCode:     https://opencode.ai");
-  console.log("  Amp:          https://ampcode.com");
-  console.log("  Pi-Agent:     https://github.com/anthropics/pi-agent\n");
-  console.log("Install and use any of these tools, then run `code-usage` again.");
-  process.exit(0);
-}
 
 // --- Collect usage data ---
 // In --json mode, send progress to stderr so stdout is clean JSON
 const log = flags.json ? process.stderr : process.stdout;
 const cutoffDate = resolveCutoffDate(flags.range);
 
-for (const provider of providerStates) {
-  if (!provider.has) {
-    log.write(`Skipping ${provider.label} data (no local data found)\n`);
-  }
-}
-
-const availableCollectors = providerStates.filter((collector) => collector.has);
-
-for (const collector of availableCollectors) {
-  log.write(`Collecting ${collector.label} data...\n`);
+for (const provider of providers) {
+  log.write(`Collecting ${provider.label} data...\n`);
 }
 
 const collectedData = {};
+let failedProviders = 0;
 const settledResults = await Promise.allSettled(
-  availableCollectors.map((collector) => collectProviderInWorker(collector.key, { cutoffDate })),
+  providers.map((provider) => collectProviderInWorker(provider.key, { cutoffDate })),
 );
 
 for (let i = 0; i < settledResults.length; i++) {
-  const collector = availableCollectors[i];
+  const provider = providers[i];
   const result = settledResults[i];
   if (result.status === "fulfilled") {
     const data = result.value;
-    collectedData[collector.key] = data;
-    log.write(`${collector.label}: ${data.summary.totalSessions} sessions\n`);
+    if (hasProviderData(data)) {
+      collectedData[provider.key] = data;
+      log.write(`${provider.label}: ${data.summary.totalSessions} sessions\n`);
+    } else {
+      collectedData[provider.key] = null;
+      log.write(`${provider.label}: no local data found\n`);
+    }
   } else {
-    log.write(`${collector.label}: failed (${formatCollectorError(result.reason)})\n`);
+    failedProviders++;
+    collectedData[provider.key] = null;
+    log.write(`${provider.label}: failed (${formatCollectorError(result.reason)})\n`);
   }
 }
 
-if (availableCollectors.length > 0 && Object.keys(collectedData).length === 0) {
-  console.error("Failed to collect usage data from detected providers.");
-  process.exit(1);
+const providersWithData = providers.filter((provider) => !!collectedData[provider.key]);
+if (providersWithData.length === 0) {
+  if (failedProviders > 0) {
+    console.error("No usage data collected; one or more providers failed.");
+    process.exit(1);
+  }
+  printNoDataMessage();
+  process.exit(0);
 }
 
 const claudeData = collectedData.claude || null;
@@ -145,7 +118,7 @@ const ampData = collectedData.amp || null;
 const piData = collectedData.pi || null;
 
 // --- Determine default tab ---
-const activeProviders = providerStates.filter((provider) => !!collectedData[provider.key]);
+const activeProviders = providersWithData;
 let defaultTab = "all";
 if (activeProviders.length === 1) {
   defaultTab = activeProviders[0].key;
@@ -186,46 +159,6 @@ if (flags.noOpen) {
 }
 
 // --- Helpers ---
-
-function findJsonl(dir) {
-  try {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isFile() && entry.name.endsWith(".jsonl")) return true;
-      if (entry.isDirectory() && findJsonl(join(dir, entry.name))) return true;
-    }
-  } catch {
-    /* skip */
-  }
-  return false;
-}
-
-function findJson(dir) {
-  try {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isFile() && entry.name.endsWith(".json")) return true;
-      if (entry.isDirectory() && findJson(join(dir, entry.name))) return true;
-    }
-  } catch {
-    /* skip */
-  }
-  return false;
-}
-
-function hasClaudeJsonlData(homeDir) {
-  const env = (process.env.CLAUDE_CONFIG_DIR || "").trim();
-  const roots = env
-    ? env
-        .split(",")
-        .map((p) => p.trim())
-        .filter(Boolean)
-    : [join(homeDir, ".config", "claude"), join(homeDir, ".claude")];
-
-  for (const root of roots) {
-    const projectsDir = join(root, "projects");
-    if (existsSync(projectsDir) && findJsonl(projectsDir)) return true;
-  }
-  return false;
-}
 
 function collectProviderInWorker(provider, options = {}) {
   return new Promise((resolve, reject) => {
@@ -268,4 +201,27 @@ function resolveCutoffDate(range) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
   return cutoff.toISOString().slice(0, 10);
+}
+
+function hasProviderData(data) {
+  if (!data || typeof data !== "object") return false;
+  const summary = data.summary || {};
+  if ((summary.totalSessions || 0) > 0) return true;
+  if ((summary.totalMessages || 0) > 0) return true;
+  if ((summary.totalTokens || 0) > 0) return true;
+  if (Array.isArray(data.models) && data.models.length > 0) return true;
+  if (Array.isArray(data.daily) && data.daily.length > 0) return true;
+  if (Array.isArray(data.projects) && data.projects.length > 0) return true;
+  return false;
+}
+
+function printNoDataMessage() {
+  console.log("No usage data found for any supported AI coding tool.\n");
+  console.log("Supported tools:");
+  console.log("  Claude Code:  https://code.claude.com/docs/en/overview");
+  console.log("  Codex CLI:    https://developers.openai.com/codex/cli/");
+  console.log("  OpenCode:     https://opencode.ai");
+  console.log("  Amp:          https://ampcode.com");
+  console.log("  Pi-Agent:     https://github.com/anthropics/pi-agent\n");
+  console.log("Install and use any of these tools, then run `code-usage` again.");
 }
