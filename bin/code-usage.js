@@ -72,34 +72,30 @@ const providers = [
 const log = flags.json ? process.stderr : process.stdout;
 const cutoffDate = resolveCutoffDate(flags.range);
 
-for (const provider of providers) {
-  log.write(`Collecting ${provider.label} data...\n`);
-}
+log.write(`Collecting data from ${providers.length} providers in parallel...\n`);
 
 const collectedData = {};
 let failedProviders = 0;
-const settledResults = await Promise.allSettled(
-  providers.map((provider) => collectProviderInWorker(provider.key, { cutoffDate })),
+const subtleStatus = createSubtleStatusFormatter(log);
+const collectorTasks = providers.map((provider) =>
+  collectProviderInWorker(provider.key, { cutoffDate })
+    .then((data) => {
+      if (hasProviderData(data)) {
+        collectedData[provider.key] = data;
+        log.write(`${provider.label}: ${data.summary.totalSessions} sessions\n`);
+      } else {
+        collectedData[provider.key] = null;
+        log.write(subtleStatus(`${provider.label}: no local data found\n`));
+      }
+    })
+    .catch((err) => {
+      failedProviders++;
+      collectedData[provider.key] = null;
+      log.write(`${provider.label}: failed (${formatCollectorError(err)})\n`);
+    }),
 );
 
-for (let i = 0; i < settledResults.length; i++) {
-  const provider = providers[i];
-  const result = settledResults[i];
-  if (result.status === "fulfilled") {
-    const data = result.value;
-    if (hasProviderData(data)) {
-      collectedData[provider.key] = data;
-      log.write(`${provider.label}: ${data.summary.totalSessions} sessions\n`);
-    } else {
-      collectedData[provider.key] = null;
-      log.write(`${provider.label}: no local data found\n`);
-    }
-  } else {
-    failedProviders++;
-    collectedData[provider.key] = null;
-    log.write(`${provider.label}: failed (${formatCollectorError(result.reason)})\n`);
-  }
-}
+await Promise.all(collectorTasks);
 
 const providersWithData = providers.filter((provider) => !!collectedData[provider.key]);
 if (providersWithData.length === 0) {
@@ -152,10 +148,13 @@ await buildAndOpen({ claudeData, codexData, opencodeData, ampData, piData, defau
 console.log("done");
 
 const dashPath = join(home, ".code-usage", "current", "code-usage-dashboard.html");
+const rawJsonPath = join(home, ".code-usage", "current", "openusage-data.json");
 if (flags.noOpen) {
   console.log(`\nDashboard generated at:\n  file://${dashPath}`);
+  console.log(`Raw data JSON:\n  file://${rawJsonPath}`);
 } else {
   console.log(`\nIf the dashboard didn't open, visit:\n  file://${dashPath}`);
+  console.log(`Raw data JSON:\n  file://${rawJsonPath}`);
 }
 
 // --- Helpers ---
@@ -224,4 +223,14 @@ function printNoDataMessage() {
   console.log("  Amp:          https://ampcode.com");
   console.log("  Pi-Agent:     https://github.com/anthropics/pi-agent\n");
   console.log("Install and use any of these tools, then run `code-usage` again.");
+}
+
+function createSubtleStatusFormatter(stream) {
+  const isTty = !!stream?.isTTY;
+  const noColor = !!process.env.NO_COLOR;
+  const isDumbTerm = process.env.TERM === "dumb";
+  if (!isTty || noColor || isDumbTerm) {
+    return (text) => text;
+  }
+  return (text) => `\x1b[2m${text}\x1b[0m`;
 }
