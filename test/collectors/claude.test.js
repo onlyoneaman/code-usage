@@ -87,6 +87,15 @@ describe("collectClaude", () => {
     const result = collectClaude();
     expect(result.summary.firstDate).toBe("2025-06-15T00:00:00.000Z");
   });
+
+  it("applies cutoffDate before aggregation", () => {
+    const result = collectClaude({ cutoffDate: "2025-06-16" });
+    expect(result.summary.totalCost).toBe(0);
+    expect(result.summary.totalSessions).toBe(0);
+    expect(result.summary.totalMessages).toBe(0);
+    expect(result.models).toEqual([]);
+    expect(result.daily).toEqual([]);
+  });
 });
 
 describe("collectClaude with empty dir", () => {

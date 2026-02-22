@@ -102,6 +102,7 @@ if (providerStates.every((provider) => !provider.has)) {
 // --- Collect usage data ---
 // In --json mode, send progress to stderr so stdout is clean JSON
 const log = flags.json ? process.stderr : process.stdout;
+const cutoffDate = resolveCutoffDate(flags.range);
 
 for (const provider of providerStates) {
   if (!provider.has) {
@@ -115,38 +116,36 @@ for (const collector of availableCollectors) {
   log.write(`Collecting ${collector.label} data...\n`);
 }
 
-const collectedPairs = await Promise.all(
-  availableCollectors.map(async (collector) => {
-    const data = await collectProviderInWorker(collector.key);
-    log.write(`${collector.label}: ${data.summary.totalSessions} sessions\n`);
-    return [collector.key, data];
-  }),
+const collectedData = {};
+const settledResults = await Promise.allSettled(
+  availableCollectors.map((collector) => collectProviderInWorker(collector.key, { cutoffDate })),
 );
-const collectedData = Object.fromEntries(collectedPairs);
 
-let claudeData = collectedData.claude || null;
-let codexData = collectedData.codex || null;
-let opencodeData = collectedData.opencode || null;
-let ampData = collectedData.amp || null;
-let piData = collectedData.pi || null;
-
-// --- Apply range filter ---
-if (flags.range && flags.range !== "all") {
-  const days = parseInt(flags.range, 10);
-  if (!Number.isNaN(days) && days > 0) {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
-    claudeData = filterByRange(claudeData, cutoffStr);
-    codexData = filterByRange(codexData, cutoffStr);
-    opencodeData = filterByRange(opencodeData, cutoffStr);
-    ampData = filterByRange(ampData, cutoffStr);
-    piData = filterByRange(piData, cutoffStr);
+for (let i = 0; i < settledResults.length; i++) {
+  const collector = availableCollectors[i];
+  const result = settledResults[i];
+  if (result.status === "fulfilled") {
+    const data = result.value;
+    collectedData[collector.key] = data;
+    log.write(`${collector.label}: ${data.summary.totalSessions} sessions\n`);
+  } else {
+    log.write(`${collector.label}: failed (${formatCollectorError(result.reason)})\n`);
   }
 }
 
+if (availableCollectors.length > 0 && Object.keys(collectedData).length === 0) {
+  console.error("Failed to collect usage data from detected providers.");
+  process.exit(1);
+}
+
+const claudeData = collectedData.claude || null;
+const codexData = collectedData.codex || null;
+const opencodeData = collectedData.opencode || null;
+const ampData = collectedData.amp || null;
+const piData = collectedData.pi || null;
+
 // --- Determine default tab ---
-const activeProviders = providerStates.filter((provider) => provider.has);
+const activeProviders = providerStates.filter((provider) => !!collectedData[provider.key]);
 let defaultTab = "all";
 if (activeProviders.length === 1) {
   defaultTab = activeProviders[0].key;
@@ -228,12 +227,12 @@ function hasClaudeJsonlData(homeDir) {
   return false;
 }
 
-function collectProviderInWorker(provider) {
+function collectProviderInWorker(provider, options = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const worker = new Worker(new URL("../src/collectors/worker.js", import.meta.url), {
       type: "module",
-      workerData: { provider },
+      workerData: { provider, options },
     });
 
     worker.once("message", (message) => {
@@ -257,30 +256,16 @@ function collectProviderInWorker(provider) {
   });
 }
 
-function filterByRange(data, cutoffStr) {
-  if (!data) return null;
-  const filtered = { ...data };
-  filtered.daily = data.daily.filter((d) => d.date >= cutoffStr);
-  if (filtered.projects) {
-    filtered.projects = data.projects.map((p) => ({
-      ...p,
-      daily: p.daily ? p.daily.filter((d) => d.date >= cutoffStr) : [],
-    }));
-  }
-  // Recalculate summary from filtered daily
-  let totalCost = 0;
-  let totalSessions = 0;
-  let totalMessages = 0;
-  for (const d of filtered.daily) {
-    totalCost += d.cost || 0;
-    totalSessions += d.sessions || 0;
-    totalMessages += d.messages || 0;
-  }
-  filtered.summary = {
-    ...data.summary,
-    totalCost,
-    totalSessions,
-    totalMessages,
-  };
-  return filtered;
+function formatCollectorError(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.split("\n")[0] || "unknown error";
+}
+
+function resolveCutoffDate(range) {
+  if (!range || range === "all") return null;
+  const days = Number.parseInt(range, 10);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  return cutoff.toISOString().slice(0, 10);
 }

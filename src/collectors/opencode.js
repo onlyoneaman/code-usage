@@ -4,19 +4,26 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { getOpencodePricing } from "../pricing/opencode.js";
 
-export function collectOpencode() {
+export function collectOpencode(options = {}) {
+  const cutoffDate = normalizeCutoffDate(options.cutoffDate);
   const home = homedir();
   const storageDir = join(home, ".local", "share", "opencode", "storage");
   const dbPath = join(home, ".local", "share", "opencode", "opencode.db");
 
   // Try storage (JSON files) first, fall back to SQLite
-  let sessions, messages, projects;
+  let rawSessions, messages, projects;
   const storageResult = tryStorage(storageDir, dbPath);
   if (storageResult) {
-    ({ sessions, messages, projects } = storageResult);
+    ({ sessions: rawSessions, messages, projects } = storageResult);
   } else {
-    ({ sessions, messages, projects } = queryDb(dbPath));
+    ({ sessions: rawSessions, messages, projects } = queryDb(dbPath));
   }
+  const sessions = cutoffDate
+    ? rawSessions.filter((s) => {
+        const date = dateFromIsoLike(s.time_created);
+        return !!date && date >= cutoffDate;
+      })
+    : rawSessions;
 
   // Build session lookup: id → { directory, project_id, date }
   const sessionMap = {};
@@ -49,6 +56,11 @@ export function collectOpencode() {
     } catch {
       continue;
     }
+    const sessionId = msg.session_id;
+    const sess = sessionMap[sessionId];
+    const msgDate = sess ? sess.date : dateFromIsoLike(msg.time_created);
+    if (cutoffDate && (!msgDate || msgDate < cutoffDate)) continue;
+
     if (data.role !== "assistant") {
       if (data.role === "user") totalMessages++;
       continue;
@@ -58,9 +70,8 @@ export function collectOpencode() {
     if (!tokens) continue;
 
     const model = data.modelID || "unknown";
-    const sessionId = msg.session_id;
-    const sess = sessionMap[sessionId];
-    const date = sess ? sess.date : new Date(msg.time_created).toISOString().slice(0, 10);
+    const date = sess ? sess.date : msgDate;
+    if (!date) continue;
 
     sessionsWithMessages.add(sessionId);
     if (!firstDate || date < firstDate) firstDate = date;
@@ -288,4 +299,18 @@ function localDateStr(d) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function normalizeCutoffDate(value) {
+  if (typeof value !== "string") return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function dateFromIsoLike(value) {
+  if (!value) return null;
+  try {
+    return new Date(value).toISOString().slice(0, 10);
+  } catch {
+    return null;
+  }
 }

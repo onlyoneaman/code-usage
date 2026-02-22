@@ -3,7 +3,12 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getPiPricing } from "../pricing/pi.js";
 
-export function collectPi(basePath) {
+export function collectPi(basePath, options = {}) {
+  if (basePath && typeof basePath === "object" && !Array.isArray(basePath)) {
+    options = basePath;
+    basePath = undefined;
+  }
+  const cutoffDate = normalizeCutoffDate(options.cutoffDate);
   const sessionsDir = basePath || getPiSessionsDir();
   const files = [];
   if (sessionsDir && existsSync(sessionsDir)) collectJsonlFiles(sessionsDir, files);
@@ -42,6 +47,7 @@ export function collectPi(basePath) {
       if (!ts) continue;
       const date = ts.slice(0, 10);
       if (!date) continue;
+      if (cutoffDate && date < cutoffDate) continue;
       if (!firstDate || date < firstDate) firstDate = date;
 
       const msg = entry.message || {};
@@ -259,4 +265,9 @@ function collectJsonlFiles(dir, out) {
   } catch {
     /* skip unreadable */
   }
+}
+
+function normalizeCutoffDate(value) {
+  if (typeof value !== "string") return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }

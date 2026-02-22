@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getClaudePricing } from "../pricing/claude.js";
 
-export function collectClaude() {
+export function collectClaude(options = {}) {
+  const cutoffDate = normalizeCutoffDate(options.cutoffDate);
   const home = homedir();
   const claudeRoots = getClaudeRoots(home);
   const files = [];
@@ -47,6 +48,7 @@ export function collectClaude() {
       if (!ts) continue;
       const date = ts.slice(0, 10);
       if (!date) continue;
+      if (cutoffDate && date < cutoffDate) continue;
       if (!firstDate || date < firstDate) firstDate = date;
 
       const msg = entry.message || {};
@@ -232,6 +234,11 @@ function localDateStr(d) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function normalizeCutoffDate(value) {
+  if (typeof value !== "string") return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 function getClaudeRoots(home) {

@@ -3,7 +3,12 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getAmpPricing } from "../pricing/amp.js";
 
-export function collectAmp(basePath) {
+export function collectAmp(basePath, options = {}) {
+  if (basePath && typeof basePath === "object" && !Array.isArray(basePath)) {
+    options = basePath;
+    basePath = undefined;
+  }
+  const cutoffDate = normalizeCutoffDate(options.cutoffDate);
   const home = homedir();
   const threadsDir =
     basePath || (process.env.AMP_DATA_DIR || "").trim() || join(home, ".local", "share", "amp", "threads");
@@ -31,7 +36,8 @@ export function collectAmp(basePath) {
     const projName = projectPath ? projectPath.split("/").filter(Boolean).pop() || projectPath : "";
 
     const events = extractUsageEvents(thread);
-    if (events.length === 0) continue;
+    const filteredEvents = cutoffDate ? events.filter((evt) => evt.timestamp.slice(0, 10) >= cutoffDate) : events;
+    if (filteredEvents.length === 0) continue;
 
     allSessions.add(sessionId);
 
@@ -40,7 +46,7 @@ export function collectAmp(basePath) {
     const userMsgCount = messages.filter((m) => m.role === "user").length;
     totalMessages += userMsgCount;
 
-    for (const evt of events) {
+    for (const evt of filteredEvents) {
       const date = evt.timestamp.slice(0, 10);
       if (!date) continue;
       if (!firstDate || date < firstDate) firstDate = date;
@@ -92,7 +98,7 @@ export function collectAmp(basePath) {
     }
 
     // Attribute user messages to the first event date for this thread
-    const firstEvtDate = events[0].timestamp.slice(0, 10);
+    const firstEvtDate = filteredEvents[0].timestamp.slice(0, 10);
     if (firstEvtDate) {
       if (!dayAgg[firstEvtDate])
         dayAgg[firstEvtDate] = { cost: 0, sessions: new Set(), messages: 0, models: new Set(), modelCosts: {} };
@@ -205,6 +211,11 @@ export function collectAmp(basePath) {
     projects,
     extra: null,
   };
+}
+
+function normalizeCutoffDate(value) {
+  if (typeof value !== "string") return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 /**

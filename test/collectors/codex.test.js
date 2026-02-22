@@ -52,4 +52,13 @@ describe("collectCodex", () => {
     expect(result.summary.totalMessages).toBeGreaterThanOrEqual(0);
     expect(result.summary.streak).toBeGreaterThanOrEqual(0);
   });
+
+  it("applies cutoffDate before aggregation", () => {
+    const result = collectCodex({ cutoffDate: "2999-01-01" });
+    expect(result.summary.totalCost).toBe(0);
+    expect(result.summary.totalSessions).toBe(0);
+    expect(result.summary.totalMessages).toBe(0);
+    expect(result.models).toEqual([]);
+    expect(result.daily).toEqual([]);
+  });
 });

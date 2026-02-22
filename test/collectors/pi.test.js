@@ -74,6 +74,15 @@ describe("collectPi", () => {
       expect(result.models[i - 1].cost).toBeGreaterThanOrEqual(result.models[i].cost);
     }
   });
+
+  it("applies cutoffDate before aggregation", () => {
+    const result = collectPi(fixtureDir, { cutoffDate: "2025-09-02" });
+    expect(result.summary.totalCost).toBe(0);
+    expect(result.summary.totalSessions).toBe(0);
+    expect(result.summary.totalMessages).toBe(0);
+    expect(result.models).toEqual([]);
+    expect(result.daily).toEqual([]);
+  });
 });
 
 describe("collectPi with empty dir", () => {

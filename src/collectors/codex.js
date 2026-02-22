@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getCodexPricing } from "../pricing/codex.js";
 
-export function collectCodex() {
+export function collectCodex(options = {}) {
+  const cutoffDate = normalizeCutoffDate(options.cutoffDate);
   const home = homedir();
   const sessionsDir = join(home, ".codex", "sessions");
   const archivedDir = join(home, ".codex", "archived_sessions");
@@ -26,6 +27,7 @@ export function collectCodex() {
   for (const fpath of files) {
     const session = parseSession(fpath);
     if (!session) continue; // no date → skip
+    if (cutoffDate && session.date < cutoffDate) continue;
     if (!session.hasUsage) continue; // no token data → skip entirely
 
     const { date, model, input, output, cached, reasoning, messages, cwd } = session;
@@ -233,6 +235,11 @@ function localDateStr(d) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function normalizeCutoffDate(value) {
+  if (typeof value !== "string") return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 function collectJsonlFiles(dir, out) {
