@@ -2,9 +2,11 @@
   <h1>code-usage</h1>
   <p><strong>One command. Every AI coding tool. One dashboard.</strong></p>
 
+  <a href="https://aicodeusage.com"><img src="https://img.shields.io/badge/web-aicodeusage.com-blue" alt="website" /></a>
   <a href="https://www.npmjs.com/package/code-usage"><img src="https://img.shields.io/npm/v/code-usage?color=blue" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/code-usage"><img src="https://img.shields.io/npm/dm/code-usage" alt="npm downloads" /></a>
   <a href="https://github.com/onlyoneaman/code-usage/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/code-usage" alt="license" /></a>
+  <a href="https://github.com/onlyoneaman/code-usage"><img src="https://img.shields.io/github/stars/onlyoneaman/code-usage?style=social" alt="GitHub stars" /></a>
 </div>
 
 <br />
@@ -134,17 +136,19 @@ If you opt in to cloud sync, aggregated usage data (daily cost, token counts, se
 ```bash
 npm install
 npm run lint              # Biome
-npm test                  # Vitest (53 tests)
+npm test                  # Vitest (87 tests)
 npm run build:dashboard   # Rebuild template
 node bin/code-usage.js    # Run locally
 ```
 
 ## Links
 
+- [Web Dashboard](https://aicodeusage.com) — cloud dashboard, leaderboard, multi-device sync
 - [npm](https://www.npmjs.com/package/code-usage)
 - [GitHub](https://github.com/onlyoneaman/code-usage)
-- [Author](https://x.com/onlyoneaman)
+- [Author](https://x.com/onlyoneaman) — [@onlyoneaman](https://x.com/onlyoneaman)
+- Support: [hi@aicodeusage.com](mailto:hi@aicodeusage.com)
 
 ## License
 
-[MIT](LICENSE) - [Aman](https://x.com/onlyoneaman)
+[MIT](LICENSE) - [Aman](https://amankumar.ai)
