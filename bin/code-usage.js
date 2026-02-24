@@ -80,6 +80,7 @@ Usage: code-usage [command] [options]
 Commands:
   (none)         Generate local HTML dashboard (default)
   setup          All-in-one onboarding: login + first sync
+  web            Open your cloud dashboard at aicodeusage.com
   login          Pair this device with aicodeusage.com
   logout         Remove device credentials and stop syncing
   sync           Upload usage data to aicodeusage.com
@@ -181,6 +182,20 @@ if (command === "setup") {
   process.exit(0);
 }
 
+if (command === "web") {
+  const { isLoggedIn, readAuth } = await import("../src/cloud/auth.js");
+  const { resolveApiBase } = await import("../src/cloud/config.js");
+  if (!isLoggedIn()) {
+    console.log("Not logged in. Run `code-usage setup` to get started.");
+    process.exit(1);
+  }
+  const apiBase = resolveApiBase(apiBaseFlag, readAuth());
+  const { default: open } = await import("open");
+  console.log(`Opening ${apiBase} ...`);
+  await open(apiBase);
+  process.exit(0);
+}
+
 if (command === "login") {
   const { login, readAuth } = await import("../src/cloud/auth.js");
   const { resolveApiBase } = await import("../src/cloud/config.js");
@@ -252,7 +267,7 @@ if (command === "config") {
 }
 
 // Unknown command — reject instead of falling through to dashboard
-const KNOWN_COMMANDS = new Set(["setup", "login", "logout", "sync", "status", "config"]);
+const KNOWN_COMMANDS = new Set(["setup", "web", "login", "logout", "sync", "status", "config"]);
 if (command && !KNOWN_COMMANDS.has(command)) {
   console.error(`Unknown command: ${command}`);
   console.error("Run `code-usage --help` for available commands.");
