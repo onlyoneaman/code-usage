@@ -107,9 +107,26 @@ export function collectOpencode(options = {}) {
     modelAgg[model].cost += cost;
 
     // Day aggregation
-    if (!dayAgg[date]) dayAgg[date] = { cost: 0, sessions: 0, messages: 0, models: new Set(), modelCosts: {} };
+    if (!dayAgg[date])
+      dayAgg[date] = {
+        cost: 0,
+        sessions: 0,
+        messages: 0,
+        models: new Set(),
+        modelCosts: {},
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        reasoning: 0,
+      };
     dayAgg[date].cost += cost;
     dayAgg[date].messages++;
+    dayAgg[date].input += input;
+    dayAgg[date].output += output;
+    dayAgg[date].cacheRead += cacheRead;
+    dayAgg[date].cacheWrite += cacheWrite;
+    dayAgg[date].reasoning += reasoning;
     dayAgg[date].models.add(model);
     dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
 
@@ -127,7 +144,19 @@ export function collectOpencode(options = {}) {
   // Count sessions per day and per project from sessionMap
   for (const [_sid, sess] of Object.entries(sessionMap)) {
     const date = sess.date;
-    if (!dayAgg[date]) dayAgg[date] = { cost: 0, sessions: 0, messages: 0, models: new Set(), modelCosts: {} };
+    if (!dayAgg[date])
+      dayAgg[date] = {
+        cost: 0,
+        sessions: 0,
+        messages: 0,
+        models: new Set(),
+        modelCosts: {},
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        reasoning: 0,
+      };
     dayAgg[date].sessions++;
 
     const cwd = sess.directory;
@@ -174,6 +203,19 @@ export function collectOpencode(options = {}) {
       messages: dayAgg[date].messages,
       models: [...dayAgg[date].models],
       modelCosts: dayAgg[date].modelCosts,
+      tokens: {
+        input: dayAgg[date].input,
+        output: dayAgg[date].output,
+        cacheRead: dayAgg[date].cacheRead,
+        cacheWrite: dayAgg[date].cacheWrite,
+        reasoning: dayAgg[date].reasoning,
+        total:
+          dayAgg[date].input +
+          dayAgg[date].output +
+          dayAgg[date].cacheRead +
+          dayAgg[date].cacheWrite +
+          dayAgg[date].reasoning,
+      },
     }));
 
   // Streak

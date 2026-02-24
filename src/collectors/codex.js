@@ -52,10 +52,25 @@ export function collectCodex(options = {}) {
     modelAgg[model].cost += cost;
 
     // Accumulate into day
-    if (!dayAgg[date]) dayAgg[date] = { cost: 0, sessions: 0, messages: 0, models: new Set(), modelCosts: {} };
+    if (!dayAgg[date])
+      dayAgg[date] = {
+        cost: 0,
+        sessions: 0,
+        messages: 0,
+        models: new Set(),
+        modelCosts: {},
+        input: 0,
+        output: 0,
+        cached: 0,
+        reasoning: 0,
+      };
     dayAgg[date].cost += cost;
     dayAgg[date].sessions++;
     dayAgg[date].messages += messages;
+    dayAgg[date].input += input;
+    dayAgg[date].output += output;
+    dayAgg[date].cached += cached;
+    dayAgg[date].reasoning += reasoning;
     dayAgg[date].models.add(model);
     dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
 
@@ -103,6 +118,13 @@ export function collectCodex(options = {}) {
       messages: dayAgg[date].messages,
       models: [...dayAgg[date].models],
       modelCosts: dayAgg[date].modelCosts,
+      tokens: {
+        input: dayAgg[date].input,
+        output: dayAgg[date].output,
+        cached: dayAgg[date].cached,
+        reasoning: dayAgg[date].reasoning,
+        total: dayAgg[date].input + dayAgg[date].output + dayAgg[date].cached + dayAgg[date].reasoning,
+      },
     }));
 
   // Streak

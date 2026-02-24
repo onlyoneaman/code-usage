@@ -82,8 +82,22 @@ export function collectAmp(basePath, options = {}) {
 
       // Day aggregation
       if (!dayAgg[date])
-        dayAgg[date] = { cost: 0, sessions: new Set(), messages: 0, models: new Set(), modelCosts: {} };
+        dayAgg[date] = {
+          cost: 0,
+          sessions: new Set(),
+          messages: 0,
+          models: new Set(),
+          modelCosts: {},
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+        };
       dayAgg[date].cost += cost;
+      dayAgg[date].input += input;
+      dayAgg[date].output += output;
+      dayAgg[date].cacheRead += cacheRead;
+      dayAgg[date].cacheWrite += cacheWrite;
       dayAgg[date].sessions.add(sessionId);
       dayAgg[date].models.add(model);
       dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
@@ -102,7 +116,17 @@ export function collectAmp(basePath, options = {}) {
     const firstEvtDate = filteredEvents[0].timestamp.slice(0, 10);
     if (firstEvtDate) {
       if (!dayAgg[firstEvtDate])
-        dayAgg[firstEvtDate] = { cost: 0, sessions: new Set(), messages: 0, models: new Set(), modelCosts: {} };
+        dayAgg[firstEvtDate] = {
+          cost: 0,
+          sessions: new Set(),
+          messages: 0,
+          models: new Set(),
+          modelCosts: {},
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+        };
       dayAgg[firstEvtDate].messages += userMsgCount;
 
       if (projectPath) {
@@ -148,6 +172,13 @@ export function collectAmp(basePath, options = {}) {
       messages: dayAgg[date].messages,
       models: [...dayAgg[date].models],
       modelCosts: dayAgg[date].modelCosts,
+      tokens: {
+        input: dayAgg[date].input,
+        output: dayAgg[date].output,
+        cacheRead: dayAgg[date].cacheRead,
+        cacheWrite: dayAgg[date].cacheWrite,
+        total: dayAgg[date].input + dayAgg[date].output + dayAgg[date].cacheRead + dayAgg[date].cacheWrite,
+      },
     }));
 
   // Streak

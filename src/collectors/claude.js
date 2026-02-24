@@ -66,7 +66,17 @@ export function collectClaude(options = {}) {
       const sessionKey = `${projectPath || "<unknown>"}::${sessionId}`;
 
       if (!dayAgg[date])
-        dayAgg[date] = { cost: 0, sessions: new Set(), messages: 0, models: new Set(), modelCosts: {} };
+        dayAgg[date] = {
+          cost: 0,
+          sessions: new Set(),
+          messages: 0,
+          models: new Set(),
+          modelCosts: {},
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+        };
       dayAgg[date].sessions.add(sessionKey);
       allSessions.add(sessionKey);
 
@@ -120,6 +130,10 @@ export function collectClaude(options = {}) {
       modelAgg[model].cost += cost;
 
       dayAgg[date].cost += cost;
+      dayAgg[date].input += input;
+      dayAgg[date].output += output;
+      dayAgg[date].cacheRead += cacheRead;
+      dayAgg[date].cacheWrite += cacheWrite;
       dayAgg[date].models.add(model);
       dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
 
@@ -161,6 +175,13 @@ export function collectClaude(options = {}) {
       messages: dayAgg[date].messages,
       models: [...dayAgg[date].models],
       modelCosts: dayAgg[date].modelCosts,
+      tokens: {
+        input: dayAgg[date].input,
+        output: dayAgg[date].output,
+        cacheRead: dayAgg[date].cacheRead,
+        cacheWrite: dayAgg[date].cacheWrite,
+        total: dayAgg[date].input + dayAgg[date].output + dayAgg[date].cacheRead + dayAgg[date].cacheWrite,
+      },
     }));
 
   // Streak

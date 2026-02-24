@@ -75,7 +75,16 @@ if (flags.help) {
 
 See how much your AI coding actually costs.
 
-Usage: code-usage [options]
+Usage: code-usage [command] [options]
+
+Commands:
+  (none)         Generate local HTML dashboard (default)
+  setup          All-in-one onboarding: login + first sync
+  login          Pair this device with aicodeusage.com
+  logout         Remove device credentials and stop syncing
+  sync           Upload usage data to aicodeusage.com
+  status         Show pairing and sync status
+  config         View/set config (e.g. config apiBase=http://localhost:5173)
 
 Options:
   --json         Print aggregated JSON to stdout
@@ -83,11 +92,171 @@ Options:
   --range <r>    Filter data by range: 7d, 30d, 90d, all (default: all)
   --providers <p> Run only specific providers: claude,codex,opencode,amp,pi
   --timeout-ms <n> Per-provider worker timeout in ms (default: 30000)
+  --api-base <u> API base URL (default: https://aicodeusage.com)
+  --no-sync      Skip auto-sync after collection
   --quiet        Suppress progress logs
   --verbose      Print detailed collector diagnostics
   -v, --version  Show version
   -h, --help     Show this help`);
   process.exit(0);
+}
+
+// --- Cloud commands ---
+const command = args.find(
+  (a) =>
+    !a.startsWith("-") && !["--range", "--providers", "--timeout-ms", "--api-base"].includes(args[args.indexOf(a) - 1]),
+);
+const apiBaseIdx = args.indexOf("--api-base");
+const apiBaseFlag = apiBaseIdx !== -1 && args[apiBaseIdx + 1] ? args[apiBaseIdx + 1] : null;
+
+if (command === "setup") {
+  const { login, readAuth } = await import("../src/cloud/auth.js");
+  const { sync } = await import("../src/cloud/sync.js");
+  const { resolveApiBase } = await import("../src/cloud/config.js");
+  const { install } = await import("../src/cloud/scheduler.js");
+  const apiBase = resolveApiBase(apiBaseFlag, readAuth());
+  await login(apiBase);
+
+  // Collect + build + sync quietly, then install scheduler
+  console.log("\nCollecting usage data...");
+  const { buildAndOpen: buildDashboard } = await import("../src/dashboard.js");
+  const setupProviders = [
+    { key: "claude", label: "Claude" },
+    { key: "codex", label: "Codex" },
+    { key: "opencode", label: "OpenCode" },
+    { key: "amp", label: "Amp" },
+    { key: "pi", label: "Pi-Agent" },
+  ];
+  const setupData = {};
+  for (const provider of setupProviders) {
+    try {
+      const data = await collectProviderInWorker(provider.key, {}, { timeoutMs: 30000 });
+      if (hasProviderData(data)) {
+        setupData[provider.key] = data;
+        console.log(`  ${provider.label}: ${data.summary.totalSessions} sessions`);
+      }
+    } catch {
+      // Skip failed providers during setup
+    }
+  }
+
+  if (Object.keys(setupData).length > 0) {
+    await buildDashboard({
+      claudeData: setupData.claude || null,
+      codexData: setupData.codex || null,
+      opencodeData: setupData.opencode || null,
+      ampData: setupData.amp || null,
+      piData: setupData.pi || null,
+      defaultTab: "all",
+      appMeta: {
+        name: pkg.name || "code-usage",
+        version: pkg.version || "0.0.0",
+        authorName: APP_CONFIG.authorName,
+        authorUrl: APP_CONFIG.authorUrl,
+        repoUrl: APP_CONFIG.repoUrl,
+        packageUrl:
+          APP_CONFIG.packageUrl || `https://www.npmjs.com/package/${encodeURIComponent(pkg.name || "code-usage")}`,
+        assetBase: join(__dirname, "..", "templates", "assets"),
+      },
+      noOpen: true,
+      providerStatuses: [],
+    });
+    await sync({ apiBase, force: true, quiet: true });
+    console.log("Synced to web dashboard.");
+  } else {
+    console.log("  No data found yet — sync will run on next collection.");
+  }
+
+  // Install background scheduler
+  try {
+    const result = install();
+    console.log(`\nBackground sync enabled (${result.mechanism}, every ${result.intervalMinutes}m).`);
+  } catch (err) {
+    console.log(`\nCould not enable background sync: ${err.message}`);
+    console.log("Run `code-usage sync` manually to keep your dashboard updated.");
+  }
+
+  console.log(`\nView your dashboard: ${readAuth()?.apiBase || apiBase}`);
+  console.log("You're all set — usage data will sync automatically.");
+  process.exit(0);
+}
+
+if (command === "login") {
+  const { login, readAuth } = await import("../src/cloud/auth.js");
+  const { resolveApiBase } = await import("../src/cloud/config.js");
+  const apiBase = resolveApiBase(apiBaseFlag, readAuth());
+  await login(apiBase);
+  process.exit(0);
+}
+
+if (command === "logout") {
+  const { logout } = await import("../src/cloud/status.js");
+  await logout();
+  process.exit(0);
+}
+
+if (command === "sync") {
+  const { readAuth } = await import("../src/cloud/auth.js");
+  const { sync } = await import("../src/cloud/sync.js");
+  const { resolveApiBase } = await import("../src/cloud/config.js");
+  const apiBase = resolveApiBase(apiBaseFlag, readAuth());
+  await sync({ apiBase, force: true });
+  process.exit(0);
+}
+
+if (command === "status") {
+  const { status } = await import("../src/cloud/status.js");
+  status();
+  process.exit(0);
+}
+
+if (command === "config") {
+  const { readConfig, writeConfig, interactiveConfig } = await import("../src/cloud/config.js");
+  const { isInstalled: schedulerIsInstalled, install: schedulerInstall } = await import("../src/cloud/scheduler.js");
+
+  const oldInterval = readConfig().syncIntervalMinutes;
+
+  // If key=value pairs passed inline, apply directly
+  const configArgs = args.filter((a) => a !== "config" && !a.startsWith("--") && a.includes("="));
+
+  if (configArgs.length > 0) {
+    const updates = {};
+    for (const arg of configArgs) {
+      const eqIdx = arg.indexOf("=");
+      const key = arg.slice(0, eqIdx);
+      const value = arg.slice(eqIdx + 1);
+      if (value === "true") updates[key] = true;
+      else if (value === "false") updates[key] = false;
+      else if (/^\d+$/.test(value)) updates[key] = Number(value);
+      else updates[key] = value;
+    }
+    writeConfig(updates);
+    console.log("Config updated.");
+  } else {
+    // Interactive mode
+    await interactiveConfig();
+  }
+
+  // Reinstall scheduler if interval changed and scheduler is active
+  const newInterval = readConfig().syncIntervalMinutes;
+  if (newInterval !== oldInterval && schedulerIsInstalled()) {
+    try {
+      const result = schedulerInstall();
+      console.log(`Background sync updated (every ${result.intervalMinutes}m).`);
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  process.exit(0);
+}
+
+// Unknown command — reject instead of falling through to dashboard
+const KNOWN_COMMANDS = new Set(["setup", "login", "logout", "sync", "status", "config"]);
+if (command && !KNOWN_COMMANDS.has(command)) {
+  console.error(`Unknown command: ${command}`);
+  console.error("Run `code-usage --help` for available commands.");
+  process.exit(1);
 }
 
 const appMeta = {
@@ -256,6 +425,24 @@ if (flags.noOpen) {
 } else {
   console.log(`\nIf the dashboard didn't open, visit:\n  file://${dashPath}`);
   console.log(`Raw data JSON:\n  file://${rawJsonPath}`);
+}
+
+// --- Auto-sync if paired (keeps web dashboard in sync with local data) ---
+if (!args.includes("--no-sync")) {
+  try {
+    const { isLoggedIn } = await import("../src/cloud/auth.js");
+    if (isLoggedIn()) {
+      const { sync } = await import("../src/cloud/sync.js");
+      const { readAuth } = await import("../src/cloud/auth.js");
+      const { resolveApiBase } = await import("../src/cloud/config.js");
+      const apiBase = resolveApiBase(apiBaseFlag, readAuth());
+      if (!flags.quiet) console.log("\nSyncing to web dashboard...");
+      await sync({ apiBase });
+    }
+  } catch (err) {
+    // Sync failure should not break the local dashboard flow
+    if (!flags.quiet) console.log(`Sync failed: ${err.message}`);
+  }
 }
 
 // --- Helpers ---

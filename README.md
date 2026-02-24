@@ -21,7 +21,7 @@ npx code-usage
 
 See how much your AI coding actually costs — across **all** your tools, in one place.
 
-`code-usage` reads local session files, calculates API-equivalent costs, and builds a self-contained HTML dashboard. No accounts, no APIs, no data leaves your machine.
+`code-usage` reads local session files, calculates API-equivalent costs, and builds a self-contained HTML dashboard. Optionally sync to [aicodeusage.com](https://aicodeusage.com) for a web dashboard you can check from anywhere.
 
 ## Why code-usage?
 
@@ -53,7 +53,9 @@ Only tools with local data appear in the dashboard — no empty tabs, no clutter
 - **Usage streaks** — see your consecutive days of AI coding activity
 - **Parallel collection** — gathers usage from all detected agents concurrently
 - **JSON export** — `--json` flag for scripting and automation
-- **100% offline** — everything runs locally, nothing is uploaded
+- **Cloud sync** — optional sync to [aicodeusage.com](https://aicodeusage.com) for a web dashboard
+- **Background sync** — auto-syncs hourly via launchd (macOS), crontab (Linux), or Task Scheduler (Windows)
+- **Works offline** — local dashboard works without an account; cloud sync is opt-in
 
 ## Quick Start
 
@@ -68,6 +70,26 @@ npm install -g code-usage
 ```
 
 That's it. If you have session data from any supported tool, the dashboard opens automatically.
+
+## Cloud Sync (Optional)
+
+Pair your machine with [aicodeusage.com](https://aicodeusage.com) to get a web dashboard:
+
+```bash
+code-usage setup
+```
+
+This runs the full onboarding: login, first data collection, sync, and installs a background scheduler so your dashboard stays fresh automatically. You can also manage the connection manually:
+
+```bash
+code-usage login          # Pair this device
+code-usage sync           # Upload latest data
+code-usage status         # Show pairing & sync status
+code-usage logout         # Unpair and stop syncing
+code-usage config         # View/set config (e.g. syncIntervalMinutes)
+```
+
+Cloud sync is entirely opt-in. If you never run `setup` or `login`, nothing is uploaded and the CLI works fully offline.
 
 ## CLI Options
 
@@ -103,7 +125,9 @@ Pricing is based on published API rates. Fallback pricing powered by [LiteLLM](h
 
 ## Privacy
 
-All data stays on your machine. `code-usage` only reads standard local session files — no `.env`, no API keys, no network calls.
+By default, all data stays on your machine. `code-usage` only reads standard local session files — no `.env`, no API keys.
+
+If you opt in to cloud sync, aggregated usage data (daily cost, token counts, session counts per provider) is sent to [aicodeusage.com](https://aicodeusage.com). No source code, file contents, or conversation data is ever uploaded. You can delete your account and all associated data from the web dashboard settings.
 
 ## Development
 
