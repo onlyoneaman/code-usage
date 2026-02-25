@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { arch, homedir, hostname, platform } from "node:os";
 import { dirname, join } from "node:path";
@@ -6,6 +7,7 @@ import open from "open";
 
 const AUTH_DIR = join(homedir(), ".code-usage");
 const AUTH_PATH = join(AUTH_DIR, "auth.json");
+const INSTALLATION_ID_PATH = join(AUTH_DIR, "installation-id");
 
 function getPackageVersion() {
   try {
@@ -23,6 +25,25 @@ export function readAuth() {
   } catch {
     return null;
   }
+}
+
+function readInstallationId() {
+  try {
+    const id = readFileSync(INSTALLATION_ID_PATH, "utf8").trim();
+    return id || null;
+  } catch {
+    return null;
+  }
+}
+
+export function getOrCreateInstallationId() {
+  const existing = readInstallationId();
+  if (existing) return existing;
+
+  const id = randomUUID();
+  mkdirSync(AUTH_DIR, { recursive: true });
+  writeFileSync(INSTALLATION_ID_PATH, `${id}\n`, { encoding: "utf8", mode: 0o600 });
+  return id;
 }
 
 export function writeAuth(data) {
@@ -50,6 +71,7 @@ export function isLoggedIn() {
  */
 export async function login(apiBase) {
   const clientVersion = getPackageVersion();
+  const installationId = getOrCreateInstallationId();
 
   // Stash old credentials so we can revoke after successful re-pair
   const previousAuth = readAuth();
@@ -67,6 +89,7 @@ export async function login(apiBase) {
         arch: arch(),
         label: hostname(),
         clientVersion,
+        installationId,
       }),
     });
   } catch (err) {
