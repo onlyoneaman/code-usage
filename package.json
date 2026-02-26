@@ -1,6 +1,6 @@
 {
   "name": "code-usage",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Unified usage dashboard for AI coding tools (Claude Code, Codex CLI, OpenCode)",
   "type": "module",
   "bin": {
@@ -47,7 +47,7 @@
   "engines": {
     "node": ">=18"
   },
-  "dependencies": {
+  "optionalDependencies": {
     "open": "^10.0.0"
   },
   "devDependencies": {

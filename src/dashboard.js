@@ -2,7 +2,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import open from "open";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const templatePath = join(__dirname, "..", "templates", "dashboard.html");
@@ -59,6 +58,11 @@ export async function buildAndOpen({
   writeFileSync(outputPath, html);
 
   if (!noOpen) {
-    await open(outputPath);
+    try {
+      const { default: open } = await import("open");
+      await open(outputPath);
+    } catch {
+      // Browser auto-open is optional. Dashboard file is still generated.
+    }
   }
 }

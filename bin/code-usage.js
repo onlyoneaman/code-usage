@@ -190,9 +190,13 @@ if (command === "web") {
     process.exit(1);
   }
   const apiBase = resolveApiBase(apiBaseFlag, readAuth());
-  const { default: open } = await import("open");
-  console.log(`Opening ${apiBase} ...`);
-  await open(apiBase);
+  try {
+    const { default: open } = await import("open");
+    console.log(`Opening ${apiBase} ...`);
+    await open(apiBase);
+  } catch {
+    console.log(`Could not open browser automatically. Visit: ${apiBase}`);
+  }
   process.exit(0);
 }
 

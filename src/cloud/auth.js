@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { arch, homedir, hostname, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import open from "open";
 
 const AUTH_DIR = join(homedir(), ".code-usage");
 const AUTH_PATH = join(AUTH_DIR, "auth.json");
@@ -112,13 +111,15 @@ export async function login(apiBase) {
   console.log(`  ${verifyUrl}`);
   console.log(`  (expires in ${expiresInMin} minutes)\n`);
 
-  // Try to open browser
-  try {
-    await open(verifyUrl);
-    console.log("(Browser opened automatically)");
-  } catch {
-    console.log("(Could not open browser automatically — open the URL above manually)");
-  }
+  // Try to open browser (optional, non-blocking)
+  void import("open")
+    .then(({ default: open }) => open(verifyUrl))
+    .then(() => {
+      console.log("(Browser opened automatically)");
+    })
+    .catch(() => {
+      console.log("(Could not open browser automatically — open the URL above manually)");
+    });
 
   console.log("\nWaiting for confirmation... (Ctrl+C to cancel)");
 
