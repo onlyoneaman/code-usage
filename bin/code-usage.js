@@ -23,6 +23,8 @@ const flags = {
   noOpen: args.includes("--no-open"),
   quiet: args.includes("--quiet"),
   verbose: args.includes("--verbose"),
+  update: args.includes("--update") || args.includes("-update"),
+  dryRun: args.includes("--dry-run"),
   range: null,
   providers: null,
   timeoutMs: 30000,
@@ -80,6 +82,7 @@ Usage: code-usage [command] [options]
 Commands:
   (none)         Generate local HTML dashboard (default)
   setup          All-in-one onboarding: login + first sync
+  update         Update the global code-usage package
   web            Open your cloud dashboard at aicodeusage.com
   login          Pair this device with aicodeusage.com
   logout         Remove device credentials and stop syncing
@@ -95,6 +98,8 @@ Options:
   --timeout-ms <n> Per-provider worker timeout in ms (default: 30000)
   --api-base <u> API base URL (default: https://aicodeusage.com)
   --no-sync      Skip auto-sync after collection
+  --update, -update Update the global code-usage package
+  --dry-run      Show what update would do without changing anything
   --quiet        Suppress progress logs
   --verbose      Print detailed collector diagnostics
   -v, --version  Show version
@@ -103,12 +108,23 @@ Options:
 }
 
 // --- Cloud commands ---
-const command = args.find(
+let command = args.find(
   (a) =>
     !a.startsWith("-") && !["--range", "--providers", "--timeout-ms", "--api-base"].includes(args[args.indexOf(a) - 1]),
 );
+if (flags.update) command = "update";
 const apiBaseIdx = args.indexOf("--api-base");
 const apiBaseFlag = apiBaseIdx !== -1 && args[apiBaseIdx + 1] ? args[apiBaseIdx + 1] : null;
+
+if (command === "update") {
+  const { runSelfUpdate } = await import("../src/update.js");
+  const status = runSelfUpdate({
+    currentVersion: pkg.version || "0.0.0",
+    packageName: pkg.name || "code-usage",
+    dryRun: flags.dryRun,
+  });
+  process.exit(status);
+}
 
 if (command === "setup") {
   const { login, readAuth } = await import("../src/cloud/auth.js");
@@ -271,7 +287,7 @@ if (command === "config") {
 }
 
 // Unknown command — reject instead of falling through to dashboard
-const KNOWN_COMMANDS = new Set(["setup", "web", "login", "logout", "sync", "status", "config"]);
+const KNOWN_COMMANDS = new Set(["setup", "update", "web", "login", "logout", "sync", "status", "config"]);
 if (command && !KNOWN_COMMANDS.has(command)) {
   console.error(`Unknown command: ${command}`);
   console.error("Run `code-usage --help` for available commands.");

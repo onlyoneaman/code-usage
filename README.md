@@ -87,6 +87,7 @@ This runs the full onboarding: login, first data collection, sync, and installs 
 code-usage login          # Pair this device
 code-usage sync           # Upload latest data
 code-usage status         # Show pairing & sync status
+code-usage update         # Update the global package to the latest npm version
 code-usage logout         # Unpair and stop syncing
 code-usage config         # View/set config (e.g. syncIntervalMinutes)
 ```
@@ -104,6 +105,7 @@ code-usage --providers codex,claude  # Run only selected providers
 code-usage --timeout-ms 45000         # Per-provider timeout (ms)
 code-usage --quiet          # Suppress progress logs
 code-usage --verbose        # Print collector diagnostics
+code-usage --update         # Same as: code-usage update (-update also works)
 code-usage -v               # Version
 code-usage -h               # Help
 ```
