@@ -125,6 +125,8 @@ code-usage -h               # Help
 
 Pricing is based on published API rates. Fallback pricing powered by [LiteLLM](https://github.com/BerriAI/litellm). If you're on a subscription plan (Claude Max, Codex Pro), actual billed cost may differ.
 
+For Claude Code, subagent usage is included in total cost and token counts, but subagent runs do not inflate the main session count. Claude subagent runs are exposed separately in the JSON output.
+
 ## Privacy
 
 By default, all data stays on your machine. `code-usage` only reads standard local session files — no `.env`, no API keys.

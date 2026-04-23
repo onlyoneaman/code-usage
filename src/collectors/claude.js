@@ -22,21 +22,42 @@ export function collectClaude(options = {}) {
 
   const seen = new Set(); // dedupe by message.id + requestId
   const allSessions = new Set();
+  const primarySessions = new Set();
+  const subagentParentSessions = new Set();
+  const subagentRuns = new Set();
+  const subagentCompactRuns = new Set();
   let totalMessages = 0;
+  let primaryMessages = 0;
+  let subagentMessages = 0;
   let firstDate = null;
+
+  const scopeAgg = {
+    primary: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    subagent: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+  };
 
   const ensureDay = (date) => {
     if (!dayAgg[date])
       dayAgg[date] = {
         cost: 0,
         sessions: new Set(),
+        primarySessions: new Set(),
+        subagentParentSessions: new Set(),
+        subagentRuns: new Set(),
+        subagentCompactRuns: new Set(),
         messages: 0,
+        primaryMessages: 0,
+        subagentMessages: 0,
         models: new Set(),
         modelCosts: {},
         input: 0,
         output: 0,
         cacheRead: 0,
         cacheWrite: 0,
+        primaryCost: 0,
+        subagentCost: 0,
+        primaryTokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        subagentTokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       };
     return dayAgg[date];
   };
@@ -46,13 +67,26 @@ export function collectClaude(options = {}) {
     const projName = projectPath.split("/").filter(Boolean).pop() || projectPath;
     if (!projAgg[projectPath]) projAgg[projectPath] = { name: projName, daily: {} };
     if (!projAgg[projectPath].daily[date])
-      projAgg[projectPath].daily[date] = { sessions: new Set(), messages: 0, cost: 0 };
+      projAgg[projectPath].daily[date] = {
+        sessions: new Set(),
+        primarySessions: new Set(),
+        subagentParentSessions: new Set(),
+        subagentRuns: new Set(),
+        subagentCompactRuns: new Set(),
+        messages: 0,
+        primaryMessages: 0,
+        subagentMessages: 0,
+        cost: 0,
+        primaryCost: 0,
+        subagentCost: 0,
+      };
     return projAgg[projectPath].daily[date];
   };
 
   for (const fpath of files) {
     const fallbackSessionId = basename(fpath, ".jsonl");
     const fallbackProjectPath = extractProjectPathFromFile(fpath);
+    const fileMeta = getClaudeFileMeta(fpath);
 
     let lines;
     try {
@@ -88,6 +122,8 @@ export function collectClaude(options = {}) {
       const sessionId = entry.sessionId || fallbackSessionId;
       const projectPath = entry.cwd || fallbackProjectPath || "";
       const sessionKey = `${projectPath || "<unknown>"}::${sessionId}`;
+      const isSubagent = isSubagentEntry(entry, fileMeta);
+      const subagentRunKey = isSubagent ? `${sessionKey}::${fileMeta.agentId || fallbackSessionId}` : null;
 
       if (entry.type === "user") {
         const day = ensureDay(date);
@@ -95,6 +131,15 @@ export function collectClaude(options = {}) {
         totalMessages++;
         if (!firstDate || date < firstDate) firstDate = date;
         day.messages++;
+        if (isSubagent) {
+          subagentMessages++;
+          day.subagentMessages++;
+          if (projectDay) projectDay.subagentMessages++;
+        } else {
+          primaryMessages++;
+          day.primaryMessages++;
+          if (projectDay) projectDay.primaryMessages++;
+        }
         if (projectDay) projectDay.messages++;
       }
 
@@ -148,6 +193,51 @@ export function collectClaude(options = {}) {
       day.models.add(model);
       day.modelCosts[model] = (day.modelCosts[model] || 0) + cost;
 
+      const scope = isSubagent ? "subagent" : "primary";
+      scopeAgg[scope].input += input;
+      scopeAgg[scope].output += output;
+      scopeAgg[scope].cacheRead += cacheRead;
+      scopeAgg[scope].cacheWrite += cacheWrite;
+      scopeAgg[scope].cost += cost;
+
+      if (isSubagent) {
+        subagentParentSessions.add(sessionKey);
+        day.subagentParentSessions.add(sessionKey);
+        if (subagentRunKey) {
+          subagentRuns.add(subagentRunKey);
+          day.subagentRuns.add(subagentRunKey);
+          if (fileMeta.isCompactSubagent) {
+            subagentCompactRuns.add(subagentRunKey);
+            day.subagentCompactRuns.add(subagentRunKey);
+          }
+        }
+        day.subagentCost += cost;
+        day.subagentTokens.input += input;
+        day.subagentTokens.output += output;
+        day.subagentTokens.cacheRead += cacheRead;
+        day.subagentTokens.cacheWrite += cacheWrite;
+        if (projectDay) {
+          projectDay.subagentParentSessions.add(sessionKey);
+          if (subagentRunKey) {
+            projectDay.subagentRuns.add(subagentRunKey);
+            if (fileMeta.isCompactSubagent) projectDay.subagentCompactRuns.add(subagentRunKey);
+          }
+          projectDay.subagentCost += cost;
+        }
+      } else {
+        primarySessions.add(sessionKey);
+        day.primarySessions.add(sessionKey);
+        day.primaryCost += cost;
+        day.primaryTokens.input += input;
+        day.primaryTokens.output += output;
+        day.primaryTokens.cacheRead += cacheRead;
+        day.primaryTokens.cacheWrite += cacheWrite;
+        if (projectDay) {
+          projectDay.primarySessions.add(sessionKey);
+          projectDay.primaryCost += cost;
+        }
+      }
+
       if (projectDay) projectDay.cost += cost;
     }
   }
@@ -183,7 +273,15 @@ export function collectClaude(options = {}) {
       date,
       cost: dayAgg[date].cost,
       sessions: dayAgg[date].sessions.size,
+      primarySessions: dayAgg[date].primarySessions.size,
+      subagentParentSessions: dayAgg[date].subagentParentSessions.size,
+      subagentRuns: dayAgg[date].subagentRuns.size,
+      subagentCompactRuns: dayAgg[date].subagentCompactRuns.size,
       messages: dayAgg[date].messages,
+      primaryMessages: dayAgg[date].primaryMessages,
+      subagentMessages: dayAgg[date].subagentMessages,
+      primaryCost: dayAgg[date].primaryCost,
+      subagentCost: dayAgg[date].subagentCost,
       models: [...dayAgg[date].models],
       modelCosts: dayAgg[date].modelCosts,
       tokens: {
@@ -192,6 +290,22 @@ export function collectClaude(options = {}) {
         cacheRead: dayAgg[date].cacheRead,
         cacheWrite: dayAgg[date].cacheWrite,
         total: dayAgg[date].input + dayAgg[date].output + dayAgg[date].cacheRead + dayAgg[date].cacheWrite,
+      },
+      primaryTokens: {
+        ...dayAgg[date].primaryTokens,
+        total:
+          dayAgg[date].primaryTokens.input +
+          dayAgg[date].primaryTokens.output +
+          dayAgg[date].primaryTokens.cacheRead +
+          dayAgg[date].primaryTokens.cacheWrite,
+      },
+      subagentTokens: {
+        ...dayAgg[date].subagentTokens,
+        total:
+          dayAgg[date].subagentTokens.input +
+          dayAgg[date].subagentTokens.output +
+          dayAgg[date].subagentTokens.cacheRead +
+          dayAgg[date].subagentTokens.cacheWrite,
       },
     }));
 
@@ -218,11 +332,47 @@ export function collectClaude(options = {}) {
     .map(([path, p]) => {
       const daily = Object.entries(p.daily)
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, d]) => ({ date, sessions: d.sessions.size, messages: d.messages, cost: d.cost }));
+        .map(([date, d]) => ({
+          date,
+          sessions: d.sessions.size,
+          primarySessions: d.primarySessions.size,
+          subagentParentSessions: d.subagentParentSessions.size,
+          subagentRuns: d.subagentRuns.size,
+          subagentCompactRuns: d.subagentCompactRuns.size,
+          messages: d.messages,
+          primaryMessages: d.primaryMessages,
+          subagentMessages: d.subagentMessages,
+          cost: d.cost,
+          primaryCost: d.primaryCost,
+          subagentCost: d.subagentCost,
+        }));
       const sessions = daily.reduce((s, d) => s + d.sessions, 0);
+      const primarySess = daily.reduce((s, d) => s + d.primarySessions, 0);
+      const subagentParentSess = daily.reduce((s, d) => s + d.subagentParentSessions, 0);
+      const subagentRunCount = daily.reduce((s, d) => s + d.subagentRuns, 0);
+      const subagentCompactRunCount = daily.reduce((s, d) => s + d.subagentCompactRuns, 0);
       const messages = daily.reduce((s, d) => s + d.messages, 0);
+      const primaryMsgs = daily.reduce((s, d) => s + d.primaryMessages, 0);
+      const subagentMsgs = daily.reduce((s, d) => s + d.subagentMessages, 0);
       const cost = daily.reduce((s, d) => s + d.cost, 0);
-      return { name: p.name, path, sessions, messages, cost, daily };
+      const primaryCost = daily.reduce((s, d) => s + d.primaryCost, 0);
+      const subagentCost = daily.reduce((s, d) => s + d.subagentCost, 0);
+      return {
+        name: p.name,
+        path,
+        sessions,
+        primarySessions: primarySess,
+        subagentParentSessions: subagentParentSess,
+        subagentRuns: subagentRunCount,
+        subagentCompactRuns: subagentCompactRunCount,
+        messages,
+        primaryMessages: primaryMsgs,
+        subagentMessages: subagentMsgs,
+        cost,
+        primaryCost,
+        subagentCost,
+        daily,
+      };
     })
     .sort((a, b) => b.cost - a.cost);
 
@@ -237,7 +387,15 @@ export function collectClaude(options = {}) {
     summary: {
       totalCost,
       totalSessions: allSessions.size,
+      primarySessions: primarySessions.size,
+      subagentParentSessions: subagentParentSessions.size,
+      subagentRuns: subagentRuns.size,
+      subagentCompactRuns: subagentCompactRuns.size,
+      primaryCost: scopeAgg.primary.cost,
+      subagentCost: scopeAgg.subagent.cost,
       totalMessages,
+      primaryMessages,
+      subagentMessages,
       totalOutputTokens,
       totalTokens,
       tokenBreakdown: {
@@ -245,6 +403,25 @@ export function collectClaude(options = {}) {
         output: totalOutputTokens,
         cacheRead: totalCacheRead,
         cacheWrite: totalCacheWrite,
+      },
+      primaryTokenBreakdown: {
+        input: scopeAgg.primary.input,
+        output: scopeAgg.primary.output,
+        cacheRead: scopeAgg.primary.cacheRead,
+        cacheWrite: scopeAgg.primary.cacheWrite,
+        total:
+          scopeAgg.primary.input + scopeAgg.primary.output + scopeAgg.primary.cacheRead + scopeAgg.primary.cacheWrite,
+      },
+      subagentTokenBreakdown: {
+        input: scopeAgg.subagent.input,
+        output: scopeAgg.subagent.output,
+        cacheRead: scopeAgg.subagent.cacheRead,
+        cacheWrite: scopeAgg.subagent.cacheWrite,
+        total:
+          scopeAgg.subagent.input +
+          scopeAgg.subagent.output +
+          scopeAgg.subagent.cacheRead +
+          scopeAgg.subagent.cacheWrite,
       },
       firstDate: firstDate ? `${firstDate}T00:00:00.000Z` : null,
       streak,
@@ -300,6 +477,22 @@ function extractProjectPathFromFile(fpath) {
   const parts = rest.split("/").filter(Boolean);
   if (parts.length === 0) return "";
   return parts[0];
+}
+
+function getClaudeFileMeta(fpath) {
+  const normalized = fpath.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  const isSubagentFile = parts.includes("subagents");
+  const agentId = isSubagentFile ? basename(fpath, ".jsonl") : null;
+  return {
+    isSubagentFile,
+    agentId,
+    isCompactSubagent: Boolean(agentId?.startsWith("agent-acompact-")),
+  };
+}
+
+function isSubagentEntry(entry, fileMeta) {
+  return fileMeta.isSubagentFile || entry.isSidechain === true || entry.isSidechain === "true";
 }
 
 function collectSessionMetaExtras(claudeRoots) {
