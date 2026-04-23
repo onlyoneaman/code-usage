@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -30,6 +32,84 @@ describe("collectClaude", () => {
     const result = collectClaude();
     expect(result.summary.totalSessions).toBeGreaterThanOrEqual(1);
     expect(result.summary.totalMessages).toBe(2); // 2 user entries
+  });
+
+  it("does not count non-usage transcript files as sessions", () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "code-usage-claude-"));
+    const projectDir = join(tempRoot, "projects", "myproject");
+    mkdirSync(projectDir, { recursive: true });
+
+    writeFileSync(
+      join(projectDir, "usage-session.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          timestamp: "2025-06-15T10:00:00.000Z",
+          sessionId: "usage-session",
+          cwd: "/tmp/myproject",
+          message: { id: "u1", role: "user" },
+          requestId: "r1",
+        }),
+        JSON.stringify({
+          type: "assistant",
+          timestamp: "2025-06-15T10:00:05.000Z",
+          sessionId: "usage-session",
+          cwd: "/tmp/myproject",
+          message: {
+            id: "a1",
+            role: "assistant",
+            model: "claude-sonnet-4-5-20250929",
+            usage: {
+              input_tokens: 100,
+              output_tokens: 50,
+              cache_read_input_tokens: 10,
+              cache_creation_input_tokens: 5,
+            },
+          },
+          requestId: "r2",
+        }),
+      ].join("\n"),
+    );
+
+    writeFileSync(
+      join(projectDir, "queue-only.jsonl"),
+      [
+        JSON.stringify({
+          type: "queue-operation",
+          timestamp: "2025-06-15T10:01:00.000Z",
+          sessionId: "queue-only",
+          cwd: "/tmp/myproject",
+        }),
+      ].join("\n"),
+    );
+
+    writeFileSync(
+      join(projectDir, "user-only.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          timestamp: "2025-06-15T10:02:00.000Z",
+          sessionId: "user-only",
+          cwd: "/tmp/myproject",
+          message: { id: "u2", role: "user" },
+          requestId: "r3",
+        }),
+      ].join("\n"),
+    );
+
+    process.env.CLAUDE_CONFIG_DIR = tempRoot;
+    try {
+      const result = collectClaude();
+      expect(result.summary.totalSessions).toBe(1);
+      expect(result.summary.totalMessages).toBe(2);
+      expect(result.daily).toHaveLength(1);
+      expect(result.daily[0].sessions).toBe(1);
+      expect(result.daily[0].messages).toBe(2);
+      expect(result.projects[0].sessions).toBe(1);
+      expect(result.projects[0].messages).toBe(2);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it("aggregates tokens correctly", () => {

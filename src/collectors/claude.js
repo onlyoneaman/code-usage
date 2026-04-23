@@ -25,6 +25,31 @@ export function collectClaude(options = {}) {
   let totalMessages = 0;
   let firstDate = null;
 
+  const ensureDay = (date) => {
+    if (!dayAgg[date])
+      dayAgg[date] = {
+        cost: 0,
+        sessions: new Set(),
+        messages: 0,
+        models: new Set(),
+        modelCosts: {},
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+      };
+    return dayAgg[date];
+  };
+
+  const ensureProjectDaily = (projectPath, date) => {
+    if (!projectPath) return null;
+    const projName = projectPath.split("/").filter(Boolean).pop() || projectPath;
+    if (!projAgg[projectPath]) projAgg[projectPath] = { name: projName, daily: {} };
+    if (!projAgg[projectPath].daily[date])
+      projAgg[projectPath].daily[date] = { sessions: new Set(), messages: 0, cost: 0 };
+    return projAgg[projectPath].daily[date];
+  };
+
   for (const fpath of files) {
     const fallbackSessionId = basename(fpath, ".jsonl");
     const fallbackProjectPath = extractProjectPathFromFile(fpath);
@@ -50,7 +75,6 @@ export function collectClaude(options = {}) {
       const date = ts.slice(0, 10);
       if (!date) continue;
       if (cutoffDate && date < cutoffDate) continue;
-      if (!firstDate || date < firstDate) firstDate = date;
 
       const msg = entry.message || {};
       const reqId = entry.requestId || null;
@@ -65,33 +89,13 @@ export function collectClaude(options = {}) {
       const projectPath = entry.cwd || fallbackProjectPath || "";
       const sessionKey = `${projectPath || "<unknown>"}::${sessionId}`;
 
-      if (!dayAgg[date])
-        dayAgg[date] = {
-          cost: 0,
-          sessions: new Set(),
-          messages: 0,
-          models: new Set(),
-          modelCosts: {},
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-        };
-      dayAgg[date].sessions.add(sessionKey);
-      allSessions.add(sessionKey);
-
-      if (projectPath) {
-        const projName = projectPath.split("/").filter(Boolean).pop() || projectPath;
-        if (!projAgg[projectPath]) projAgg[projectPath] = { name: projName, daily: {} };
-        if (!projAgg[projectPath].daily[date])
-          projAgg[projectPath].daily[date] = { sessions: new Set(), messages: 0, cost: 0 };
-        projAgg[projectPath].daily[date].sessions.add(sessionKey);
-      }
-
       if (entry.type === "user") {
+        const day = ensureDay(date);
+        const projectDay = ensureProjectDaily(projectPath, date);
         totalMessages++;
-        dayAgg[date].messages++;
-        if (projectPath) projAgg[projectPath].daily[date].messages++;
+        if (!firstDate || date < firstDate) firstDate = date;
+        day.messages++;
+        if (projectDay) projectDay.messages++;
       }
 
       const usage = msg.usage || null;
@@ -107,6 +111,13 @@ export function collectClaude(options = {}) {
       // Claude emits synthetic assistant rows (rate-limit/no-op) with zero usage.
       // Keep session/message accounting, but exclude them from model/cost stats.
       if (model === "<synthetic>" && tokenSum === 0) continue;
+
+      const day = ensureDay(date);
+      const projectDay = ensureProjectDaily(projectPath, date);
+      day.sessions.add(sessionKey);
+      allSessions.add(sessionKey);
+      if (projectDay) projectDay.sessions.add(sessionKey);
+      if (!firstDate || date < firstDate) firstDate = date;
 
       let cost = Number.isFinite(entry.costUSD) ? entry.costUSD : null;
       if (cost === null) {
@@ -129,15 +140,15 @@ export function collectClaude(options = {}) {
       modelAgg[model].cacheWrite += cacheWrite;
       modelAgg[model].cost += cost;
 
-      dayAgg[date].cost += cost;
-      dayAgg[date].input += input;
-      dayAgg[date].output += output;
-      dayAgg[date].cacheRead += cacheRead;
-      dayAgg[date].cacheWrite += cacheWrite;
-      dayAgg[date].models.add(model);
-      dayAgg[date].modelCosts[model] = (dayAgg[date].modelCosts[model] || 0) + cost;
+      day.cost += cost;
+      day.input += input;
+      day.output += output;
+      day.cacheRead += cacheRead;
+      day.cacheWrite += cacheWrite;
+      day.models.add(model);
+      day.modelCosts[model] = (day.modelCosts[model] || 0) + cost;
 
-      if (projectPath) projAgg[projectPath].daily[date].cost += cost;
+      if (projectDay) projectDay.cost += cost;
     }
   }
 
