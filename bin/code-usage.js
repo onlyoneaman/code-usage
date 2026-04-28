@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { APP_CONFIG } from "../src/config.js";
 import { buildAndOpen } from "../src/dashboard.js";
+import { ensureFresh as ensureLitellmFresh } from "../src/pricing/litellm.js";
 
 const home = homedir();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -136,6 +137,7 @@ if (command === "setup") {
 
   // Collect + build + sync quietly, then install scheduler
   console.log("\nCollecting usage data...");
+  await ensureLitellmFresh();
   const { buildAndOpen: buildDashboard } = await import("../src/dashboard.js");
   const setupProviders = [
     { key: "claude", label: "Claude" },
@@ -324,6 +326,8 @@ const log = flags.json ? process.stderr : process.stdout;
 const infoLog = createInfoLogger(log, flags.quiet);
 const verboseLog = createVerboseLogger(log, flags.verbose, flags.quiet);
 const cutoffDate = resolveCutoffDate(flags.range);
+
+await ensureLitellmFresh({ log: verboseLog });
 
 infoLog(`Collecting data from ${providers.length} providers in parallel...\n`);
 verboseLog(`Selected providers: ${providers.map((p) => p.key).join(", ")}\n`);

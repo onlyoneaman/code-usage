@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { litellmLookup } from "../../src/pricing/litellm.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ensureFresh, litellmLookup } from "../../src/pricing/litellm.js";
 
 describe("litellmLookup", () => {
   it("returns pricing for a known Claude model", () => {
@@ -27,5 +27,35 @@ describe("litellmLookup", () => {
     expect(p).toHaveProperty("output");
     expect(p).toHaveProperty("cacheRead");
     expect(p).toHaveProperty("cacheWrite");
+  });
+});
+
+describe("ensureFresh", () => {
+  let originalFetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("never throws on network failure and reports the skip via log", async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("offline"));
+    const log = vi.fn();
+    // ttlMs:0 forces a refresh attempt even if a cache file already exists.
+    const refreshed = await ensureFresh({ ttlMs: 0, timeoutMs: 100, log });
+    expect(refreshed).toBe(false);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/skipped/));
+  });
+
+  it("rejects empty responses without writing the cache", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    const log = vi.fn();
+    const refreshed = await ensureFresh({ ttlMs: 0, timeoutMs: 100, log });
+    expect(refreshed).toBe(false);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/empty response/));
   });
 });

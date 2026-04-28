@@ -22,9 +22,12 @@ describe("getClaudePricing", () => {
     expect(p.output).toBe(5);
   });
 
-  it("returns haiku 3.5 pricing for haiku-3 models", () => {
-    const p = getClaudePricing("claude-haiku-3-5-20241022");
-    expect(p.input).toBe(0.8);
+  it("returns haiku 3.5 pricing for the canonical anthropic id", () => {
+    // Anthropic emits `claude-3-5-haiku-...`, not `claude-haiku-3-5-...`. LiteLLM has the
+    // canonical form. Use a tolerance because LiteLLM stores per-token floats that round
+    // to ~0.79999999 per MTok.
+    const p = getClaudePricing("claude-3-5-haiku-20241022");
+    expect(p.input).toBeCloseTo(0.8, 5);
     expect(p.output).toBe(4);
   });
 
@@ -34,5 +37,13 @@ describe("getClaudePricing", () => {
     expect(p).toHaveProperty("output");
     expect(p).toHaveProperty("cacheRead");
     expect(p).toHaveProperty("cacheWrite");
+  });
+
+  it("does not misroute hypothetical future opus IDs to the legacy tier", () => {
+    // Regression: prior heuristic used `id.includes("4-1")` which matched 4-100, 4-15, etc.
+    // Unknown Opus should default to the modern $5/$25 tier, not legacy $15/$75.
+    const p = getClaudePricing("claude-opus-4-100-99999999");
+    expect(p.input).toBe(5);
+    expect(p.output).toBe(25);
   });
 });
