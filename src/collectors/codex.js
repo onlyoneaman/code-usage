@@ -180,7 +180,37 @@ export function collectCodex(options = {}) {
 }
 
 export function emptyBucket() {
-  return { input: 0, cached: 0, output: 0, longInput: 0, longCached: 0, longOutput: 0 };
+  return { input: 0, cached: 0, output: 0, reasoning: 0, longInput: 0, longCached: 0, longOutput: 0 };
+}
+
+// Longest pause tolerated inside a burst of replayed usage. Codex writes a
+// forked session's inherited history in one go, so the burst is dense while the
+// child's own first turn follows a real pause. Measured locally: burst gaps are
+// 0-1ms, the following pause is 3-16s.
+const REWRITTEN_BURST_PAUSE_MS = 1000;
+
+/**
+ * Timestamp at which a file's replayed-history burst ends, or null.
+ *
+ * Forking a Codex session copies the parent's entire conversation — including
+ * its `token_count` events — into the child's rollout file. Those tokens were
+ * already billed against the parent, so counting them again multiplies a long
+ * session's cost by the number of times it was forked. A file whose first two
+ * usage events are written back to back replayed a history it did not spend;
+ * one that pauses between them was recording its own turns from the start.
+ * Mirrors ccusage's `detect_rewritten_burst` (adapters/codex/src/parser.rs).
+ */
+export function detectRewrittenBurst(entries) {
+  let first = null;
+  for (const { ts, hasUsage } of entries) {
+    if (!hasUsage || ts === null) continue;
+    if (first === null) {
+      first = ts;
+      continue;
+    }
+    return ts - first <= REWRITTEN_BURST_PAUSE_MS ? first + REWRITTEN_BURST_PAUSE_MS : null;
+  }
+  return null;
 }
 
 function sameUsage(a, b) {
@@ -226,6 +256,7 @@ export function accumulateTurn(buckets, turn, serviceTier) {
   b.input += inp;
   b.cached += cch;
   b.output += out;
+  b.reasoning += turn.reasoning_output_tokens || 0;
   // A turn whose own input crosses the threshold bills entirely at the
   // long-context rates. `input_tokens` is the full request context, history
   // included, so this is the right quantity to test.
@@ -249,14 +280,11 @@ function parseSession(fpath) {
     messages = 0,
     hasUsage = false,
     cwd = null;
-  let input = 0,
-    output = 0,
-    cached = 0,
-    reasoning = 0,
-    serviceTier = null,
+  let serviceTier = null,
     prevTotals = null;
   const buckets = { standard: emptyBucket(), priority: emptyBucket() };
 
+  const parsed = [];
   for (const line of lines) {
     if (!line.trim()) continue;
     let entry;
@@ -265,9 +293,22 @@ function parseSession(fpath) {
     } catch {
       continue;
     }
+    const info = entry.payload?.info;
+    parsed.push({
+      entry,
+      ts: entry.timestamp ? Date.parse(entry.timestamp) : null,
+      hasUsage: !!(info && (info.last_token_usage || info.total_token_usage)),
+    });
+  }
 
+  // A forked session opens with its parent's replayed history; those tokens
+  // were billed against the parent, so skip past the burst before counting.
+  const burstEnd = detectRewrittenBurst(parsed);
+
+  for (const { entry, ts } of parsed) {
     const type = entry.type;
     const payload = entry.payload || {};
+    const inReplayedBurst = burstEnd !== null && ts !== null && ts <= burstEnd;
 
     if (type === "session_meta") {
       const ts = payload.timestamp || entry.timestamp || "";
@@ -286,14 +327,10 @@ function parseSession(fpath) {
       const info = payload.info;
       if (info && typeof info === "object") {
         const tu = info.total_token_usage;
-        if (tu) {
-          hasUsage = true;
-          input = Math.max(input, tu.input_tokens || 0);
-          output = Math.max(output, tu.output_tokens || 0);
-          cached = Math.max(cached, tu.cached_input_tokens || 0);
-          reasoning = Math.max(reasoning, tu.reasoning_output_tokens || 0);
-        }
-        const turn = turnUsage(info, prevTotals);
+        if (tu) hasUsage = true;
+        const turn = inReplayedBurst ? null : turnUsage(info, prevTotals);
+        // Advance the running totals through the burst too, so the child's
+        // first real turn is measured against where the parent left off.
         if (tu) prevTotals = tu;
         if (turn) accumulateTurn(buckets, turn, serviceTier);
         if (info.model || payload.model) model = info.model || payload.model;
@@ -311,6 +348,16 @@ function parseSession(fpath) {
   }
   if (!date) return null;
   if (!model) model = "gpt-5.3-codex";
+
+  // Totals come from the turns actually counted, so reported tokens and cost
+  // agree — and neither includes a fork's replayed parent history. On a clean
+  // session this reconciles exactly with max(total_token_usage).
+  const s = buckets.standard;
+  const p = buckets.priority;
+  const input = s.input + p.input;
+  const output = s.output + p.output;
+  const cached = s.cached + p.cached;
+  const reasoning = s.reasoning + p.reasoning;
 
   return { date, model, input, output, cached, reasoning, messages, hasUsage, cwd, buckets };
 }

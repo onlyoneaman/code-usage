@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { accumulateTurn, collectCodex, emptyBucket, turnUsage } from "../../src/collectors/codex.js";
+import {
+  accumulateTurn,
+  collectCodex,
+  detectRewrittenBurst,
+  emptyBucket,
+  turnUsage,
+} from "../../src/collectors/codex.js";
 
 describe("collectCodex", () => {
   // Codex reads from ~/.codex — we can't easily redirect it.
@@ -103,5 +109,30 @@ describe("codex turn accounting", () => {
     accumulateTurn(b, { input_tokens: 200 }, "priority");
     expect(b.standard.input).toBe(100);
     expect(b.priority.input).toBe(200);
+  });
+});
+
+describe("detectRewrittenBurst", () => {
+  const ev = (ts, hasUsage = true) => ({ ts, hasUsage });
+
+  it("flags a file whose first two usage events are written back to back", () => {
+    expect(detectRewrittenBurst([ev(1000), ev(1000), ev(20000)])).toBe(2000);
+  });
+
+  it("ignores a session that pauses between its first two turns", () => {
+    expect(detectRewrittenBurst([ev(1000), ev(8000), ev(15000)])).toBeNull();
+  });
+
+  it("treats a burst straddling the pause boundary as replayed", () => {
+    expect(detectRewrittenBurst([ev(1000), ev(1999)])).toBe(2000);
+  });
+
+  it("skips non-usage lines when locating the first two events", () => {
+    expect(detectRewrittenBurst([ev(500, false), ev(1000), ev(1010)])).toBe(2000);
+  });
+
+  it("returns null when the file has fewer than two usage events", () => {
+    expect(detectRewrittenBurst([ev(1000)])).toBeNull();
+    expect(detectRewrittenBurst([])).toBeNull();
   });
 });
