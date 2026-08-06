@@ -5,16 +5,11 @@
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { slim as slimEntries } from "../src/pricing/litellm.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT = join(__dirname, "..", "src", "pricing", "litellm-data.json");
 const URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
-const COST_KEYS = [
-  "input_cost_per_token",
-  "output_cost_per_token",
-  "cache_read_input_token_cost",
-  "cache_creation_input_token_cost",
-];
 
 console.log("Fetching LiteLLM pricing...");
 const res = await fetch(URL);
@@ -24,25 +19,9 @@ if (!res.ok) {
 }
 const data = await res.json();
 
-const slim = {};
-let total = 0,
-  kept = 0;
-for (const [model, info] of Object.entries(data)) {
-  if (typeof info !== "object" || !info) continue;
-  total++;
-  const entry = {};
-  let has = false;
-  for (const k of COST_KEYS) {
-    if (info[k]) {
-      entry[k] = info[k];
-      has = true;
-    }
-  }
-  if (has) {
-    slim[model] = entry;
-    kept++;
-  }
-}
+const slim = slimEntries(data);
+const total = Object.keys(data).length;
+const kept = Object.keys(slim).length;
 
 const out = JSON.stringify(slim);
 writeFileSync(OUT, out);

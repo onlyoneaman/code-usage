@@ -9,6 +9,7 @@
 
 import { litellmLookup } from "./litellm.js";
 
+const FABLE = { input: 10, output: 50, cacheRead: 1.0, cacheWrite: 12.5 };
 const OPUS_MODERN = { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 };
 const OPUS_LEGACY = { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 };
 const SONNET = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
@@ -17,7 +18,13 @@ const HAIKU_3_5 = { input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1.0 };
 const HAIKU_3 = { input: 0.25, output: 1.25, cacheRead: 0.03, cacheWrite: 0.3 };
 
 const CLAUDE_PRICING = {
+  // Fable/Mythos — $10/$50 tier
+  "claude-fable-5": FABLE,
+  "claude-mythos-5": FABLE,
+  "claude-mythos-preview": FABLE,
   // Opus — modern $5/$25 tier (4.5+)
+  "claude-opus-5": OPUS_MODERN,
+  "claude-opus-4-8": OPUS_MODERN,
   "claude-opus-4-7": OPUS_MODERN,
   "claude-opus-4-7-20260416": OPUS_MODERN,
   "claude-opus-4-6": OPUS_MODERN,
@@ -30,6 +37,7 @@ const CLAUDE_PRICING = {
   "claude-opus-4-20250514": OPUS_LEGACY,
   "claude-3-opus-20240229": OPUS_LEGACY,
   // Sonnet
+  "claude-sonnet-5": SONNET,
   "claude-sonnet-4-6": SONNET,
   "claude-sonnet-4-5": SONNET,
   "claude-sonnet-4-5-20250929": SONNET,
@@ -54,6 +62,7 @@ export function getClaudePricing(modelId) {
   //    every legacy Opus, so any Opus reaching this branch is unknown-and-newer; default to
   //    the modern $5/$25 tier rather than risk substring false positives on legacy detection.
   const id = modelId.toLowerCase();
+  if (id.includes("fable") || id.includes("mythos")) return FABLE;
   if (id.includes("opus")) return OPUS_MODERN;
   if (id.includes("sonnet")) return SONNET;
   if (id.includes("haiku")) return HAIKU_4;

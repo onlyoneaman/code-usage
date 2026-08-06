@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getClaudePricing } from "../pricing/claude.js";
+import { cacheWriteCost, cacheWriteSplit, costFromUsage } from "../pricing/cost.js";
 import { computeCurrentStreakFromDates, normalizeCutoffDate } from "./utils.js";
 
 export function collectClaude(options = {}) {
@@ -168,21 +169,19 @@ export function collectClaude(options = {}) {
       if (cost === null) {
         if (model === "<unknown>") cost = 0;
         else {
-          const p = getClaudePricing(model);
-          const m = 1e6;
-          cost =
-            (input / m) * p.input +
-            (output / m) * p.output +
-            (cacheRead / m) * p.cacheRead +
-            (cacheWrite / m) * p.cacheWrite;
+          cost = costFromUsage(usage, getClaudePricing(model));
         }
       }
 
-      if (!modelAgg[model]) modelAgg[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+      if (!modelAgg[model])
+        modelAgg[model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, write5m: 0, write1h: 0, cost: 0 };
+      const [write5m, write1h] = cacheWriteSplit(usage);
       modelAgg[model].input += input;
       modelAgg[model].output += output;
       modelAgg[model].cacheRead += cacheRead;
       modelAgg[model].cacheWrite += cacheWrite;
+      modelAgg[model].write5m += write5m;
+      modelAgg[model].write1h += write1h;
       modelAgg[model].cost += cost;
 
       day.cost += cost;
@@ -251,7 +250,7 @@ export function collectClaude(options = {}) {
     const iC = (a.input / m) * p.input;
     const oC = (a.output / m) * p.output;
     const crC = (a.cacheRead / m) * p.cacheRead;
-    const cwC = (a.cacheWrite / m) * p.cacheWrite;
+    const cwC = id === "<unknown>" ? 0 : cacheWriteCost(a.write5m, a.write1h, p);
     totalCost += a.cost;
     models.push({
       id,

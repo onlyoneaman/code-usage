@@ -22,6 +22,11 @@ const COST_KEYS = [
   "output_cost_per_token",
   "cache_read_input_token_cost",
   "cache_creation_input_token_cost",
+  "cache_creation_input_token_cost_above_1hr",
+  "input_cost_per_token_above_200k_tokens",
+  "output_cost_per_token_above_200k_tokens",
+  "cache_read_input_token_cost_above_200k_tokens",
+  "cache_creation_input_token_cost_above_200k_tokens",
 ];
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_FETCH_TIMEOUT_MS = 3000;
@@ -76,11 +81,17 @@ export function litellmLookup(modelId, prefixes) {
 function toMTok(entry) {
   if (!entry) return null;
   const M = 1e6;
+  const opt = (k) => (entry[k] ? entry[k] * M : null);
   return {
     input: (entry.input_cost_per_token || 0) * M,
     output: (entry.output_cost_per_token || 0) * M,
     cacheRead: (entry.cache_read_input_token_cost || 0) * M,
     cacheWrite: (entry.cache_creation_input_token_cost || 0) * M,
+    cacheWrite1h: opt("cache_creation_input_token_cost_above_1hr"),
+    inputAbove200k: opt("input_cost_per_token_above_200k_tokens"),
+    outputAbove200k: opt("output_cost_per_token_above_200k_tokens"),
+    cacheReadAbove200k: opt("cache_read_input_token_cost_above_200k_tokens"),
+    cacheWriteAbove200k: opt("cache_creation_input_token_cost_above_200k_tokens"),
   };
 }
 
@@ -92,7 +103,7 @@ function isFresh(path, ttlMs) {
   }
 }
 
-function slim(raw) {
+export function slim(raw) {
   const out = {};
   for (const [model, info] of Object.entries(raw)) {
     if (!info || typeof info !== "object") continue;
