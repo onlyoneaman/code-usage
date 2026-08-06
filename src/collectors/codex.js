@@ -40,7 +40,7 @@ export function collectCodex(options = {}) {
     // Compute exact cost for this session. `reasoning` is a subset of `output`,
     // so it is tracked for display but never priced separately.
     const p = getCodexPricing(model);
-    const cost = codexCost({ input, cached, output, ...session.longContext }, p, session.serviceTier);
+    const cost = codexCost(session.buckets.standard, p, null) + codexCost(session.buckets.priority, p, "priority");
 
     // Accumulate into model
     if (!modelAgg[model]) modelAgg[model] = { input: 0, output: 0, cached: 0, reasoning: 0, cost: 0 };
@@ -179,6 +179,63 @@ export function collectCodex(options = {}) {
   };
 }
 
+export function emptyBucket() {
+  return { input: 0, cached: 0, output: 0, longInput: 0, longCached: 0, longOutput: 0 };
+}
+
+function sameUsage(a, b) {
+  return (
+    !!a &&
+    !!b &&
+    (a.input_tokens || 0) === (b.input_tokens || 0) &&
+    (a.output_tokens || 0) === (b.output_tokens || 0) &&
+    (a.cached_input_tokens || 0) === (b.cached_input_tokens || 0)
+  );
+}
+
+/**
+ * Per-turn usage from one `token_count` event, or null when there is none.
+ *
+ * Codex re-emits identical `token_count` events (~23% of them in long
+ * sessions), so `last_token_usage` is only trusted when the running totals
+ * actually advanced; otherwise the turn is a duplicate and contributes
+ * nothing. Falls back to the delta of the totals when `last_token_usage` is
+ * absent. Mirrors ccusage (adapters/codex/src/parser.rs).
+ */
+export function turnUsage(info, prevTotals) {
+  const total = info.total_token_usage;
+  const advanced = !total || !prevTotals || !sameUsage(total, prevTotals);
+  if (!advanced) return null;
+  const last = info.last_token_usage;
+  if (last) return last;
+  if (!total) return null;
+  const delta = {
+    input_tokens: (total.input_tokens || 0) - (prevTotals?.input_tokens || 0),
+    output_tokens: (total.output_tokens || 0) - (prevTotals?.output_tokens || 0),
+    cached_input_tokens: (total.cached_input_tokens || 0) - (prevTotals?.cached_input_tokens || 0),
+  };
+  return delta.input_tokens > 0 || delta.output_tokens > 0 ? delta : null;
+}
+
+export function accumulateTurn(buckets, turn, serviceTier) {
+  const isPriority = serviceTier === "priority" || serviceTier === "fast";
+  const b = isPriority ? buckets.priority : buckets.standard;
+  const inp = turn.input_tokens || 0;
+  const cch = turn.cached_input_tokens || 0;
+  const out = turn.output_tokens || 0;
+  b.input += inp;
+  b.cached += cch;
+  b.output += out;
+  // A turn whose own input crosses the threshold bills entirely at the
+  // long-context rates. `input_tokens` is the full request context, history
+  // included, so this is the right quantity to test.
+  if (inp > CODEX_LONG_CONTEXT_THRESHOLD) {
+    b.longInput += inp;
+    b.longCached += cch;
+    b.longOutput += out;
+  }
+}
+
 function parseSession(fpath) {
   let lines;
   try {
@@ -196,8 +253,9 @@ function parseSession(fpath) {
     output = 0,
     cached = 0,
     reasoning = 0,
-    serviceTier = null;
-  const longContext = { longInput: 0, longCached: 0, longOutput: 0 };
+    serviceTier = null,
+    prevTotals = null;
+  const buckets = { standard: emptyBucket(), priority: emptyBucket() };
 
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -219,7 +277,8 @@ function parseSession(fpath) {
     }
 
     // Codex records the service tier on thread settings; "priority" (legacy
-    // "fast") bills at roughly 2x standard. Last setting in the file wins.
+    // "fast") bills at ~2x standard. A session can switch mid-run, so the
+    // value is tracked as it moves and applied to the turns that follow.
     const tier = payload.thread_settings?.service_tier ?? payload.service_tier;
     if (typeof tier === "string") serviceTier = tier;
 
@@ -234,15 +293,9 @@ function parseSession(fpath) {
           cached = Math.max(cached, tu.cached_input_tokens || 0);
           reasoning = Math.max(reasoning, tu.reasoning_output_tokens || 0);
         }
-        // OpenAI switches the whole request to long-context rates once its
-        // input crosses the threshold, so classify per turn and bank the
-        // qualifying turns separately.
-        const last = info.last_token_usage;
-        if (last && (last.input_tokens || 0) > CODEX_LONG_CONTEXT_THRESHOLD) {
-          longContext.longInput += last.input_tokens || 0;
-          longContext.longCached += last.cached_input_tokens || 0;
-          longContext.longOutput += last.output_tokens || 0;
-        }
+        const turn = turnUsage(info, prevTotals);
+        if (tu) prevTotals = tu;
+        if (turn) accumulateTurn(buckets, turn, serviceTier);
         if (info.model || payload.model) model = info.model || payload.model;
       }
       if (payload.collaboration_mode?.settings?.model) model = payload.collaboration_mode.settings.model;
@@ -259,7 +312,7 @@ function parseSession(fpath) {
   if (!date) return null;
   if (!model) model = "gpt-5.3-codex";
 
-  return { date, model, input, output, cached, reasoning, messages, hasUsage, cwd, serviceTier, longContext };
+  return { date, model, input, output, cached, reasoning, messages, hasUsage, cwd, buckets };
 }
 
 function collectJsonlFiles(dir, out) {

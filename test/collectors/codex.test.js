@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectCodex } from "../../src/collectors/codex.js";
+import { accumulateTurn, collectCodex, emptyBucket, turnUsage } from "../../src/collectors/codex.js";
 
 describe("collectCodex", () => {
   // Codex reads from ~/.codex — we can't easily redirect it.
@@ -60,5 +60,48 @@ describe("collectCodex", () => {
     expect(result.summary.totalMessages).toBe(0);
     expect(result.models).toEqual([]);
     expect(result.daily).toEqual([]);
+  });
+});
+
+describe("codex turn accounting", () => {
+  it("drops duplicate token_count events", () => {
+    const total = { input_tokens: 100, output_tokens: 10, cached_input_tokens: 5 };
+    const last = { input_tokens: 100, output_tokens: 10, cached_input_tokens: 5 };
+    // Same totals as the previous event => duplicate, contributes nothing.
+    expect(turnUsage({ total_token_usage: total, last_token_usage: last }, total)).toBeNull();
+  });
+
+  it("uses last_token_usage once the totals advance", () => {
+    const prev = { input_tokens: 100, output_tokens: 10, cached_input_tokens: 5 };
+    const total = { input_tokens: 250, output_tokens: 20, cached_input_tokens: 8 };
+    const last = { input_tokens: 150, output_tokens: 10, cached_input_tokens: 3 };
+    expect(turnUsage({ total_token_usage: total, last_token_usage: last }, prev)).toBe(last);
+  });
+
+  it("falls back to the delta of totals when last_token_usage is absent", () => {
+    const prev = { input_tokens: 100, output_tokens: 10, cached_input_tokens: 5 };
+    const total = { input_tokens: 250, output_tokens: 20, cached_input_tokens: 8 };
+    expect(turnUsage({ total_token_usage: total }, prev)).toEqual({
+      input_tokens: 150,
+      output_tokens: 10,
+      cached_input_tokens: 3,
+    });
+  });
+
+  it("banks a turn as long-context only when its own input crosses the threshold", () => {
+    const b = { standard: emptyBucket(), priority: emptyBucket() };
+    accumulateTurn(b, { input_tokens: 300_000, output_tokens: 100 }, null);
+    accumulateTurn(b, { input_tokens: 1_000, output_tokens: 100 }, null);
+    expect(b.standard.input).toBe(301_000);
+    expect(b.standard.longInput).toBe(300_000);
+    expect(b.standard.longOutput).toBe(100);
+  });
+
+  it("routes turns to the tier active at that point in the session", () => {
+    const b = { standard: emptyBucket(), priority: emptyBucket() };
+    accumulateTurn(b, { input_tokens: 100 }, null);
+    accumulateTurn(b, { input_tokens: 200 }, "priority");
+    expect(b.standard.input).toBe(100);
+    expect(b.priority.input).toBe(200);
   });
 });
