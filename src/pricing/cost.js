@@ -30,18 +30,26 @@ export function cacheWriteSplit(usage) {
 
 /**
  * Cost in dollars for one usage record, given per-MTok pricing.
- * `pricing` may carry optional `cacheWrite1h` and `*Above200k` rates.
+ * `pricing` may carry optional `cacheWrite1h`, `*Above200k` and `fastMultiplier`.
+ *
+ * Fast mode (`usage.speed === "fast"`) bills the whole record at the model's
+ * fast rate; records omitting `speed` are standard.
  */
 export function costFromUsage(usage, pricing) {
   const M = 1e6;
   const [write5m, write1h] = cacheWriteSplit(usage);
-  return (
+  const base =
     (tieredCost(usage.input_tokens || 0, pricing.input, pricing.inputAbove200k) +
       tieredCost(usage.output_tokens || 0, pricing.output, pricing.outputAbove200k) +
       tieredCost(usage.cache_read_input_tokens || 0, pricing.cacheRead, pricing.cacheReadAbove200k) +
       cacheWriteCost(write5m, write1h, pricing) * M) /
-    M
-  );
+    M;
+  return base * fastMultiplier(usage, pricing);
+}
+
+/** Fast-mode price multiplier for a usage record. 1 when standard or unsupported. */
+export function fastMultiplier(usage, pricing) {
+  return usage?.speed === "fast" ? pricing.fastMultiplier || 1 : 1;
 }
 
 /** Dollars per MTok-scale cost for a 5m/1h cache-write token split. */
@@ -51,6 +59,45 @@ export function cacheWriteCost(write5m, write1h, pricing) {
   return (
     (tieredCost(write5m, pricing.cacheWrite, pricing.cacheWriteAbove200k) + tieredCost(write1h, rate1h, rate1hAbove)) /
     1e6
+  );
+}
+
+/**
+ * Cost in dollars for a Codex usage bucket.
+ *
+ * Two OpenAI-specific rules, both mirroring ccusage
+ * (ccusage/adapters/codex/src/report.rs :: calculate_codex_bucket_cost):
+ *   - `reasoning_output_tokens` is a subset of `output_tokens`, not an
+ *     additional bucket, so it is never priced on its own.
+ *   - Long-context is a whole-request switch: every token of a request whose
+ *     input exceeds the threshold bills at the long-context rates, so the
+ *     aggregate is priced as two independent buckets rather than marginally.
+ */
+export function codexCost(b, pricing, serviceTier) {
+  const M = 1e6;
+  const priority = serviceTier === "priority" || serviceTier === "fast";
+  const multiplier = priority ? pricing.priorityMultiplier || 2 : 1;
+  const cachedRate = pricing.cachedInput || pricing.input;
+  const longInputRate = pricing.inputAbove || pricing.input;
+  const longOutputRate = pricing.outputAbove || pricing.output;
+  const longCachedRate = pricing.cachedInputAbove || cachedRate;
+
+  const longInput = Math.min(b.longInput || 0, b.input || 0);
+  const longCached = Math.min(b.longCached || 0, b.cached || 0, longInput);
+  const longOutput = Math.min(b.longOutput || 0, b.output || 0);
+
+  const shortNonCached = Math.max(0, (b.input || 0) - longInput - ((b.cached || 0) - longCached));
+  const longNonCached = longInput - longCached;
+
+  return (
+    ((shortNonCached * pricing.input +
+      ((b.cached || 0) - longCached) * cachedRate +
+      ((b.output || 0) - longOutput) * pricing.output +
+      longNonCached * longInputRate +
+      longCached * longCachedRate +
+      longOutput * longOutputRate) *
+      multiplier) /
+    M
   );
 }
 

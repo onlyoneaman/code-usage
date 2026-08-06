@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cacheWriteSplit, costFromUsage, tieredCost } from "../../src/pricing/cost.js";
+import { cacheWriteSplit, codexCost, costFromUsage, tieredCost } from "../../src/pricing/cost.js";
 
 const OPUS = { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, cacheWrite1h: 10 };
 
@@ -69,5 +69,44 @@ describe("costFromUsage", () => {
     const sonnet = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75, inputAbove200k: 6 };
     const u = { input_tokens: 300_000 };
     expect(costFromUsage(u, sonnet)).toBeCloseTo((200_000 * 3 + 100_000 * 6) / 1e6, 6);
+  });
+});
+
+describe("codexCost", () => {
+  const GPT = { input: 1.75, output: 14, cachedInput: 0.175, priorityMultiplier: 2 };
+
+  it("never prices reasoning tokens separately", () => {
+    const withReasoning = codexCost({ input: 1e6, cached: 0, output: 1e6, reasoning: 5e5 }, GPT);
+    const without = codexCost({ input: 1e6, cached: 0, output: 1e6 }, GPT);
+    expect(withReasoning).toBe(without);
+  });
+
+  it("bills cached input at the cached rate", () => {
+    const c = codexCost({ input: 1e6, cached: 1e6, output: 0 }, GPT);
+    expect(c).toBeCloseTo(0.175, 6);
+  });
+
+  it("doubles the whole session on the priority tier", () => {
+    const std = codexCost({ input: 1e6, cached: 0, output: 1e6 }, GPT, "standard");
+    const pri = codexCost({ input: 1e6, cached: 0, output: 1e6 }, GPT, "priority");
+    expect(pri).toBeCloseTo(std * 2, 6);
+  });
+
+  it("treats the legacy 'fast' spelling as priority", () => {
+    const a = codexCost({ input: 1e6, output: 0 }, GPT, "fast");
+    const b = codexCost({ input: 1e6, output: 0 }, GPT, "priority");
+    expect(a).toBe(b);
+  });
+
+  it("bills long-context turns entirely at the above rates", () => {
+    const p = { ...GPT, inputAbove: 3.5, outputAbove: 28 };
+    const all = codexCost({ input: 1e6, cached: 0, output: 1e6, longInput: 1e6, longOutput: 1e6 }, p);
+    expect(all).toBeCloseTo(3.5 + 28, 6);
+  });
+
+  it("prices mixed short and long turns as two buckets", () => {
+    const p = { ...GPT, inputAbove: 3.5, outputAbove: 28 };
+    const mixed = codexCost({ input: 2e6, cached: 0, output: 0, longInput: 1e6 }, p);
+    expect(mixed).toBeCloseTo(1.75 + 3.5, 6);
   });
 });

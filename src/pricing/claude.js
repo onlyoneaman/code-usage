@@ -50,13 +50,24 @@ const CLAUDE_PRICING = {
   "claude-3-haiku-20240307": HAIKU_3,
 };
 
+// Fast mode is a research preview on Opus 5 and Opus 4.8 only, billed at
+// $10/$50 per MTok against their standard $5/$25 — a flat 2x. Opus 4.7 fast
+// mode was removed, and no other model accepts `speed: "fast"`.
+const FAST_CAPABLE = new Set(["claude-opus-5", "claude-opus-4-8"]);
+const FAST_MULTIPLIER = 2;
+
+function withFastMultiplier(modelId, pricing) {
+  if (!FAST_CAPABLE.has(modelId)) return pricing;
+  return { ...pricing, fastMultiplier: FAST_MULTIPLIER };
+}
+
 export function getClaudePricing(modelId) {
   // 1. LiteLLM — first-class source
   const lm = litellmLookup(modelId, ["anthropic/", "anthropic."]);
-  if (lm) return lm;
+  if (lm) return withFastMultiplier(modelId, lm);
 
   // 2. Pinned table — verified backup
-  if (CLAUDE_PRICING[modelId]) return CLAUDE_PRICING[modelId];
+  if (CLAUDE_PRICING[modelId]) return withFastMultiplier(modelId, CLAUDE_PRICING[modelId]);
 
   // 3. Family heuristic — last-resort guess for brand-new models. The pinned table covers
   //    every legacy Opus, so any Opus reaching this branch is unknown-and-newer; default to

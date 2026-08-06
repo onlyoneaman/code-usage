@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { getCodexPricing } from "../pricing/codex.js";
+import { CODEX_LONG_CONTEXT_THRESHOLD, getCodexPricing } from "../pricing/codex.js";
+import { codexCost } from "../pricing/cost.js";
 import { computeCurrentStreakFromDates, normalizeCutoffDate } from "./utils.js";
 
 export function collectCodex(options = {}) {
@@ -36,12 +37,10 @@ export function collectCodex(options = {}) {
     totalMessages += messages;
     if (!firstDate || date < firstDate) firstDate = date;
 
-    // Compute exact cost for this session
+    // Compute exact cost for this session. `reasoning` is a subset of `output`,
+    // so it is tracked for display but never priced separately.
     const p = getCodexPricing(model);
-    const m = 1e6;
-    const uncached = Math.max(0, input - cached);
-    const cost =
-      (uncached / m) * p.input + (cached / m) * p.cachedInput + (output / m) * p.output + (reasoning / m) * p.reasoning;
+    const cost = codexCost({ input, cached, output, ...session.longContext }, p, session.serviceTier);
 
     // Accumulate into model
     if (!modelAgg[model]) modelAgg[model] = { input: 0, output: 0, cached: 0, reasoning: 0, cost: 0 };
@@ -95,7 +94,6 @@ export function collectCodex(options = {}) {
     const iC = (uncached / m) * p.input;
     const ciC = (a.cached / m) * p.cachedInput;
     const oC = (a.output / m) * p.output;
-    const rC = (a.reasoning / m) * p.reasoning;
     totalCost += a.cost;
     models.push({
       id,
@@ -104,7 +102,8 @@ export function collectCodex(options = {}) {
         { label: "Input", tokens: uncached, cost: iC },
         { label: "Cached", tokens: a.cached, cost: ciC },
         { label: "Output", tokens: a.output, cost: oC },
-        { label: "Reasoning", tokens: a.reasoning, cost: rC },
+        // Reasoning tokens are a subset of output and already billed there.
+        { label: "Reasoning (incl. in output)", tokens: a.reasoning, cost: 0 },
       ],
     });
   }
@@ -196,7 +195,9 @@ function parseSession(fpath) {
   let input = 0,
     output = 0,
     cached = 0,
-    reasoning = 0;
+    reasoning = 0,
+    serviceTier = null;
+  const longContext = { longInput: 0, longCached: 0, longOutput: 0 };
 
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -217,6 +218,11 @@ function parseSession(fpath) {
       if (payload.cwd) cwd = payload.cwd;
     }
 
+    // Codex records the service tier on thread settings; "priority" (legacy
+    // "fast") bills at roughly 2x standard. Last setting in the file wins.
+    const tier = payload.thread_settings?.service_tier ?? payload.service_tier;
+    if (typeof tier === "string") serviceTier = tier;
+
     if (type === "event_msg" && payload && typeof payload === "object") {
       const info = payload.info;
       if (info && typeof info === "object") {
@@ -227,6 +233,15 @@ function parseSession(fpath) {
           output = Math.max(output, tu.output_tokens || 0);
           cached = Math.max(cached, tu.cached_input_tokens || 0);
           reasoning = Math.max(reasoning, tu.reasoning_output_tokens || 0);
+        }
+        // OpenAI switches the whole request to long-context rates once its
+        // input crosses the threshold, so classify per turn and bank the
+        // qualifying turns separately.
+        const last = info.last_token_usage;
+        if (last && (last.input_tokens || 0) > CODEX_LONG_CONTEXT_THRESHOLD) {
+          longContext.longInput += last.input_tokens || 0;
+          longContext.longCached += last.cached_input_tokens || 0;
+          longContext.longOutput += last.output_tokens || 0;
         }
         if (info.model || payload.model) model = info.model || payload.model;
       }
@@ -244,7 +259,7 @@ function parseSession(fpath) {
   if (!date) return null;
   if (!model) model = "gpt-5.3-codex";
 
-  return { date, model, input, output, cached, reasoning, messages, hasUsage, cwd };
+  return { date, model, input, output, cached, reasoning, messages, hasUsage, cwd, serviceTier, longContext };
 }
 
 function collectJsonlFiles(dir, out) {
