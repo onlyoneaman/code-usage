@@ -11,6 +11,7 @@ import { ensureFresh as ensureLitellmFresh } from "../src/pricing/litellm.js";
 
 const home = homedir();
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_TIMEOUT_MS = 120000;
 
 const pkgPath = join(__dirname, "..", "package.json");
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
@@ -28,7 +29,7 @@ const flags = {
   dryRun: args.includes("--dry-run"),
   range: null,
   providers: null,
-  timeoutMs: 30000,
+  timeoutMs: DEFAULT_TIMEOUT_MS,
 };
 const rangeIdx = args.indexOf("--range");
 if (rangeIdx !== -1) {
@@ -52,7 +53,7 @@ const timeoutIdx = args.indexOf("--timeout-ms");
 if (timeoutIdx !== -1) {
   const value = args[timeoutIdx + 1];
   if (!value || value.startsWith("-")) {
-    console.error("Missing value for --timeout-ms. Example: --timeout-ms 30000");
+    console.error("Missing value for --timeout-ms. Example: --timeout-ms 120000");
     process.exit(1);
   }
   const parsedTimeout = Number.parseInt(value, 10);
@@ -90,13 +91,15 @@ Commands:
   sync           Upload usage data to aicodeusage.com
   status         Show pairing and sync status
   config         View/set config (e.g. config apiBase=http://localhost:5173)
+                 Keys: syncEnabled, syncIntervalMinutes, apiBase, autoUpdate
+                 (config autoUpdate=false stops automatic CLI updates after sync)
 
 Options:
   --json         Print aggregated JSON to stdout
   --no-open      Generate dashboard without opening browser
   --range <r>    Filter data by range: 7d, 30d, 90d, all (default: all)
   --providers <p> Run only specific providers: claude,codex,opencode,amp,pi
-  --timeout-ms <n> Per-provider worker timeout in ms (default: 30000)
+  --timeout-ms <n> Per-provider worker timeout in ms (default: 120000)
   --api-base <u> API base URL (default: https://aicodeusage.com)
   --no-sync      Skip auto-sync after collection
   --update, -update Update the global code-usage package
@@ -149,7 +152,7 @@ if (command === "setup") {
   const setupData = {};
   for (const provider of setupProviders) {
     try {
-      const data = await collectProviderInWorker(provider.key, {}, { timeoutMs: 30000 });
+      const data = await collectProviderInWorker(provider.key, {}, { timeoutMs: DEFAULT_TIMEOUT_MS });
       if (hasProviderData(data)) {
         setupData[provider.key] = data;
         console.log(`  ${provider.label}: ${data.summary.totalSessions} sessions`);
@@ -359,12 +362,15 @@ const collectorTasks = providers.map((provider) => {
     .then((data) => {
       const durationMs = Date.now() - startedAt;
       providerRunMeta[provider.key].durationMs = durationMs;
+      if (isPlainObject(data?.diagnostics)) {
+        providerRunMeta[provider.key].diagnostics = data.diagnostics;
+      }
       if (hasProviderData(data)) {
         collectedData[provider.key] = data;
         providerRunMeta[provider.key].status = "success";
         providerRunMeta[provider.key].sessions = data.summary.totalSessions || 0;
         infoLog(
-          `${provider.label}: ${data.summary.totalSessions} sessions${formatDurationSuffix(durationMs, flags.verbose)}\n`,
+          `${provider.label}: ${data.summary.totalSessions} sessions${formatDurationSuffix(durationMs, flags.verbose)}${formatDiagnosticsSuffix(data.diagnostics, flags.verbose)}\n`,
         );
       } else {
         collectedData[provider.key] = null;
@@ -468,26 +474,38 @@ if (flags.noOpen) {
 
 // --- Auto-sync if paired (keeps web dashboard in sync with local data) ---
 if (!args.includes("--no-sync")) {
+  let syncResult = null;
   try {
-    const { isLoggedIn } = await import("../src/cloud/auth.js");
+    const { isLoggedIn, readAuth } = await import("../src/cloud/auth.js");
     if (isLoggedIn()) {
       const { sync } = await import("../src/cloud/sync.js");
-      const { readAuth } = await import("../src/cloud/auth.js");
       const { resolveApiBase } = await import("../src/cloud/config.js");
       const apiBase = resolveApiBase(apiBaseFlag, readAuth());
       if (!flags.quiet) console.log("\nSyncing to web dashboard...");
-      await sync({ apiBase });
+      syncResult = await sync({ apiBase });
     }
   } catch (err) {
     // Sync failure should not break the local dashboard flow
     if (!flags.quiet) console.log(`Sync failed: ${err.message}`);
+  }
+
+  // Runs after sync so replacing the install never disturbs this process
+  if (syncResult) {
+    const { maybeAutoUpdate } = await import("../src/update.js");
+    const { readConfig } = await import("../src/cloud/config.js");
+    await maybeAutoUpdate({
+      currentVersion: pkg.version || "0.0.0",
+      minVersion: syncResult.client?.minVersion ?? null,
+      config: readConfig(),
+      quiet: flags.quiet,
+    });
   }
 }
 
 // --- Helpers ---
 
 function collectProviderInWorker(provider, options = {}, runtime = {}) {
-  const timeoutMs = Number.isFinite(runtime.timeoutMs) ? runtime.timeoutMs : 30000;
+  const timeoutMs = Number.isFinite(runtime.timeoutMs) ? runtime.timeoutMs : DEFAULT_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     let settled = false;
     const worker = new Worker(new URL("../src/collectors/worker.js", import.meta.url), {
@@ -541,6 +559,10 @@ function resolveCutoffDate(range) {
   return cutoff.toISOString().slice(0, 10);
 }
 
+function isPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 function hasProviderData(data) {
   if (!data || typeof data !== "object") return false;
   const summary = data.summary || {};
@@ -586,6 +608,18 @@ function createVerboseLogger(stream, verbose, quiet) {
 
 function formatDurationSuffix(durationMs, verbose) {
   return verbose ? ` (${durationMs}ms)` : "";
+}
+
+function formatDiagnosticsSuffix(diagnostics, verbose) {
+  if (!verbose || !isPlainObject(diagnostics)) return "";
+  const parts = [];
+  if (diagnostics.skippedFiles > 0) parts.push(plural(diagnostics.skippedFiles, "skipped file"));
+  if (diagnostics.unknownModelTurns > 0) parts.push(plural(diagnostics.unknownModelTurns, "unknown-model turn"));
+  return parts.map((part) => ` · ${part}`).join("");
+}
+
+function plural(count, noun) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 function parseProviderFilter(value, providers) {

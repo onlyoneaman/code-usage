@@ -94,6 +94,8 @@ code-usage config         # View/set config (e.g. syncIntervalMinutes)
 
 Cloud sync is entirely opt-in. If you never run `setup` or `login`, nothing is uploaded and the CLI works fully offline.
 
+The scheduled sync also keeps the CLI itself current: once a day it checks npm for a newer `code-usage` and installs it after the sync finishes. Turn that off with `code-usage config autoUpdate=false`.
+
 ## CLI Options
 
 ```bash

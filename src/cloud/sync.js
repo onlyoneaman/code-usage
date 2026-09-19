@@ -10,6 +10,7 @@ import { signRequest } from "./signing.js";
 const HOME = homedir();
 const USAGE_DATA_PATH = join(HOME, ".code-usage", "current", "openusage-data.json");
 const SYNC_STATE_PATH = join(HOME, ".code-usage", "sync-state.json");
+const MAX_CHUNK_BYTES = 400 * 1024;
 
 function getPackageVersion() {
   try {
@@ -24,13 +25,14 @@ function getPackageVersion() {
 /**
  * Execute one sync cycle: preflight → read data → normalize → ingest.
  * The openusage-data.json file is the single source of truth —
- * we normalize it to records and upload to D1.
+ * we normalize it to records and upload to D1 in size-bounded batches.
+ * Returns { ok, client } where client is the server's optional version advice.
  */
 export async function sync(options = {}) {
   const auth = readAuth();
   if (!auth || !auth.deviceId || !auth.deviceSecret || !auth.userId) {
     console.log("Not paired. Run `code-usage login` first.");
-    return;
+    return { ok: false, client: null };
   }
 
   const apiBase = options.apiBase || auth.apiBase || "https://aicodeusage.com";
@@ -39,19 +41,20 @@ export async function sync(options = {}) {
   // Step 1: Preflight
   log("Checking policy...");
   const policy = await fetchPreflight(apiBase, auth);
-  if (!policy) return;
+  if (!policy) return { ok: false, client: null };
+  const client = policy.client || null;
 
   if (policy.effectivePolicy.accountPaused || policy.effectivePolicy.devicePaused) {
     log("Sync is paused by server policy. Skipping.");
     updateSyncState({ cachedPolicy: policy.effectivePolicy, lastPolicyFetchAt: new Date().toISOString() });
-    return;
+    return { ok: false, client };
   }
 
   // Step 2: Read usage data (single source of truth)
   log("Reading usage data...");
   if (options.force && !existsSync(USAGE_DATA_PATH)) {
     log("No usage data found. Run `code-usage` first to collect data, then `code-usage sync`.");
-    return;
+    return { ok: false, client };
   }
 
   let rawContent;
@@ -61,7 +64,7 @@ export async function sync(options = {}) {
     usageData = JSON.parse(rawContent);
   } catch {
     log("Could not read usage data. Run `code-usage` first to collect data.");
-    return;
+    return { ok: false, client };
   }
 
   // Step 3: Normalize to records
@@ -69,51 +72,116 @@ export async function sync(options = {}) {
   const records = normalizeToRecords(usageData);
   if (records.length === 0) {
     log("No records to sync.");
-    return;
+    return { ok: false, client };
   }
 
-  // Step 4: Build envelope
-  const datasetCreatedAt = usageData.metadata?.createdAt || new Date().toISOString();
-  const datasetHash = sha256(rawContent);
-  const batchId = computeBatchId(records, datasetCreatedAt, auth.userId);
-
-  const providerStatuses = {};
-  for (const p of usageData.metadata?.providers || []) {
-    providerStatuses[p.key] = p.status || "unknown";
-  }
-
-  const envelope = {
-    contractVersion: "1",
-    normalizationVersion: "1",
-    pricingVersion: getPackageVersion(),
-    batchId,
-    policyVersion: policy.policyVersion,
-    source: {
-      datasetCreatedAt,
-      datasetHash,
-      providerStatuses,
-    },
+  // Step 4: Build size-bounded envelopes
+  const envelopes = buildEnvelopes({
+    usageData,
+    rawContent,
     records,
-  };
+    policyVersion: policy.policyVersion,
+    userId: auth.userId,
+  });
 
-  // Step 5: POST ingest
-  log(`Uploading ${records.length} records...`);
-  const result = await postIngest(apiBase, auth, envelope);
+  // Step 5: POST each batch in order
+  const batchWord = envelopes.length === 1 ? "batch" : "batches";
+  log(`Uploading ${records.length} records in ${envelopes.length} ${batchWord}...`);
+  let policyVersion = policy.policyVersion;
+  let synced = 0;
+  let duplicates = 0;
+  for (const [index, envelope] of envelopes.entries()) {
+    envelope.policyVersion = policyVersion;
+    const result = await postIngest(apiBase, auth, envelope);
+    if (!result) {
+      console.error(`Sync incomplete: ${index} of ${envelopes.length} ${batchWord} uploaded.`);
+      updateSyncState({ lastPolicyFetchAt: new Date().toISOString(), cachedPolicy: policy.effectivePolicy });
+      return { ok: false, client };
+    }
+    policyVersion = envelope.policyVersion;
+    if (result.duplicate) duplicates++;
+    else synced += result.recordsProcessed ?? envelope.records.length;
+  }
 
-  if (!result) return;
-
-  if (result.duplicate) {
+  if (duplicates === envelopes.length) {
     log("Data already synced (no changes since last sync).");
   } else {
-    log(`Synced ${result.recordsProcessed} records.`);
+    log(`Synced ${synced} records in ${envelopes.length} ${batchWord}.`);
   }
 
   updateSyncState({
     lastSyncAt: new Date().toISOString(),
-    lastBatchId: batchId,
+    lastBatchId: envelopes[envelopes.length - 1].batchId,
     lastPolicyFetchAt: new Date().toISOString(),
     cachedPolicy: policy.effectivePolicy,
   });
+  return { ok: true, client };
+}
+
+/**
+ * Build one envelope per chunk so each serialized body stays under maxBytes.
+ * Every envelope carries the full source metadata; only batchId and records differ.
+ */
+export function buildEnvelopes({ usageData, rawContent, records, policyVersion, userId, maxBytes = MAX_CHUNK_BYTES }) {
+  const datasetCreatedAt = usageData.metadata?.createdAt || new Date().toISOString();
+  const base = {
+    contractVersion: "1",
+    normalizationVersion: "1",
+    pricingVersion: getPackageVersion(),
+    batchId: computeBatchId([], datasetCreatedAt, userId, 0),
+    policyVersion,
+    source: {
+      datasetCreatedAt,
+      datasetHash: sha256(rawContent),
+      ...summarizeProviders(usageData.metadata?.providers),
+    },
+    records: [],
+  };
+  const overheadBytes = Buffer.byteLength(JSON.stringify(base));
+  return splitRecordsIntoChunks(records, maxBytes, overheadBytes).map((chunk, index) => ({
+    ...base,
+    batchId: computeBatchId(chunk, datasetCreatedAt, userId, index),
+    records: chunk,
+  }));
+}
+
+/**
+ * Greedy split keeping `envelopeOverheadBytes + serialized records` under maxBytes.
+ * envelopeOverheadBytes is the byte length of the envelope serialized with `records: []`,
+ * so the sum is exactly the final body size. A chunk always holds at least one record.
+ */
+export function splitRecordsIntoChunks(records, maxBytes, envelopeOverheadBytes = 0) {
+  const chunks = [];
+  let current = [];
+  let currentBytes = envelopeOverheadBytes;
+  for (const record of records) {
+    const recordBytes = Buffer.byteLength(JSON.stringify(record));
+    if (current.length > 0 && currentBytes + 1 + recordBytes > maxBytes) {
+      chunks.push(current);
+      current = [];
+      currentBytes = envelopeOverheadBytes;
+    }
+    currentBytes += recordBytes + (current.length > 0 ? 1 : 0);
+    current.push(record);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+export function summarizeProviders(providers = []) {
+  const providerStatuses = {};
+  const providerDiagnostics = {};
+  for (const p of providers) {
+    const status = p.status || "unknown";
+    providerStatuses[p.key] = status;
+    providerDiagnostics[p.key] = {
+      status,
+      durationMs: p.durationMs ?? 0,
+      error: p.error ?? null,
+      ...(p.diagnostics || {}),
+    };
+  }
+  return { providerStatuses, providerDiagnostics };
 }
 
 /** Terminal state: device gone or revoked. Clean up everything. */
@@ -335,8 +403,8 @@ export function normalizeToRecords(usageData) {
   return records;
 }
 
-export function computeBatchId(records, datasetCreatedAt, userId) {
-  const canonical = JSON.stringify(records) + datasetCreatedAt + userId;
+export function computeBatchId(records, datasetCreatedAt, userId, chunkIndex = 0) {
+  const canonical = `${JSON.stringify(records)}${datasetCreatedAt}${userId}:${chunkIndex}`;
   return sha256(canonical);
 }
 

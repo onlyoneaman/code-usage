@@ -18,7 +18,7 @@ try {
   const options = workerData?.options || {};
   const collector = COLLECTORS[provider];
   if (!collector) throw new Error(`Unsupported provider: ${String(provider)}`);
-  const data = collector(options);
+  const data = await collector(options);
   parentPort?.postMessage({ ok: true, data });
 } catch (err) {
   const message = err instanceof Error ? err.stack || err.message : String(err);

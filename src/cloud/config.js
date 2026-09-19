@@ -10,12 +10,14 @@ const DEFAULTS = {
   syncEnabled: true,
   syncIntervalMinutes: 60,
   apiBase: "https://aicodeusage.com",
+  autoUpdate: true,
 };
 
 const CONFIG_SCHEMA = [
   { key: "syncEnabled", label: "Sync enabled", type: "boolean", description: "Automatically sync usage data" },
   { key: "syncIntervalMinutes", label: "Sync interval (minutes)", type: "number", description: "How often to sync" },
   { key: "apiBase", label: "API base URL", type: "string", description: "Server to sync with" },
+  { key: "autoUpdate", label: "Auto-update", type: "boolean", description: "Install new CLI releases after sync" },
 ];
 
 /** Read config from disk, merged with defaults. Never creates the file. */
